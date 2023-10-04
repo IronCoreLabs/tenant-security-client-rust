@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package ironcorelabs.proto;
+option java_package = "com.ironcorelabs.proto";
+
+import "dcp_edek.proto";
+import "cmk_edek.proto";
+
+message V4DocumentHeader {
+
+  message SignatureInformation {
+    enum SignatureType {
+      NONE = 0;
+      HS256 = 1;
+    }
+    bytes signature = 1;
+    SignatureType signature_type = 2;
+  }
+
+  message EdekWrapper {
+    message Aes256GcmEncryptedDek {
+      bytes iv = 1;
+      bytes ciphertext = 2;
+      string id = 3;
+    }
+
+    oneof edek {
+      ironcorelabs.proto.dcp.EncryptedDeks dcp_edek = 1;
+      ironcorelabs.proto.cmk.EncryptedDek cmk_edek = 2;
+      Aes256GcmEncryptedDek aes_256_gcm_edek = 3;
+    }
+  }
+
+  // This is a message instead of inlining the algo to support the expansion
+  // into streaming and chunking.
+  message EncryptionInformation {
+    enum EncryptionAlgorithm {
+      UNKNOWN = 0;
+      AES256_GCM = 1;
+    }
+    EncryptionAlgorithm algorithm = 1;
+  }
+
+  message SignedPayload {
+    EncryptionInformation encryption_info = 1;
+    repeated EdekWrapper edeks = 2;
+    // A spot for users to put information they care about keeping with the dek.
+    // An ICL application should not parse or look at this data.
+    map<string, string> user_metadata = 3;
+  }
+
+  SignatureInformation signature_info = 1;
+  SignedPayload signed_payload = 2;
+}
