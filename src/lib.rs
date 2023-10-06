@@ -150,7 +150,7 @@ pub fn sign_header(key: [u8; AES_KEY_LEN], header_payload: &SignedPayload) -> Si
     let signature = signing::sign_hs256(key, &bytes);
 
     SignatureInformation {
-        signature: signature.0.into(),
+        signature: signature.0.to_vec().into(),
         signature_type: SignatureType::HS256.into(),
         ..Default::default()
     }
@@ -160,16 +160,20 @@ pub fn verify_signature(key: [u8; AES_KEY_LEN], header: &V4DocumentHeader) -> bo
     match header.signature_info.signature_type.enum_value() {
         Ok(SignatureType::NONE) => true,
         Ok(SignatureType::HS256) => {
-            signing::verify_hs256(
-                key,
-                //This unwrap can't actually ever happen because they create the coded stream with exactly the computed size before
-                //serializing.
-                &header
-                    .signed_payload
-                    .write_to_bytes()
-                    .expect("Writing proto to bytes failed."),
-                &signing::Signature(header.signature_info.signature.to_vec()),
-            )
+            if let Ok(signature_bytes) = header.signature_info.signature.to_vec().try_into() {
+                signing::verify_hs256(
+                    key,
+                    //This unwrap can't actually ever happen because they create the coded stream with exactly the computed size before
+                    //serializing.
+                    &header
+                        .signed_payload
+                        .write_to_bytes()
+                        .expect("Writing proto to bytes failed."),
+                    &signing::Signature(signature_bytes),
+                )
+            } else {
+                false
+            }
         }
         _ => false,
     }
