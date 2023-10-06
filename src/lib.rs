@@ -1,3 +1,4 @@
+pub mod aes;
 mod signing;
 
 use self::icl_header_v4::V4DocumentHeader;
@@ -6,11 +7,23 @@ use icl_header_v4::v4document_header::{
     signature_information::SignatureType, SignatureInformation, SignedPayload,
 };
 use protobuf::Message;
+use rand::{CryptoRng, RngCore};
 use signing::AES_KEY_LEN;
 use std::fmt::{Display, Formatter, Result as DisplayResult};
 use thiserror::Error;
 
 include!(concat!(env!("OUT_DIR"), "/mod.rs"));
+
+/// Holds bytes which are decrypted (The actual document bytes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlaintextDocument(pub Vec<u8>);
+
+/// Holds bytes of an aes encrypted value
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncryptedDocument(pub Vec<u8>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EncryptionKey(pub [u8; 32]);
 
 #[derive(Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Error {
@@ -28,6 +41,10 @@ pub enum Error {
     ProtoSerializationErr(String),
     /// Serialized header is longer than allowed. Value is actual length in bytes.
     HeaderLengthOverflow(u64),
+    /// Encryption of the edoc failed.
+    EncryptError(String),
+    /// Decryption of the edoc failed.
+    DecryptError(String),
 }
 
 impl Display for Error {
@@ -40,6 +57,8 @@ impl Display for Error {
             Error::SpecifiedLengthTooLong(x) => write!(f, "SpecifiedLengthTooLong({x})"),
             Error::ProtoSerializationErr(x) => write!(f, "ProtoSerializationErr({x})"),
             Error::HeaderLengthOverflow(x) => write!(f, "HeaderLengthOverflow({x})"),
+            Error::EncryptError(x) => write!(f, "EncryptError({x})"),
+            Error::DecryptError(x) => write!(f, "DecryptError({x})"),
         }
     }
 }
@@ -111,12 +130,28 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, EncryptedPayload), 
     }
 }
 
-pub fn decode_edoc(b: Bytes) -> Result<(V4DocumentHeader, EncryptedPayload), Error> {
-    let (header_bytes, attached_document) = get_v4_header_and_payload(b)?;
-
-    let pb = protobuf::Message::parse_from_bytes(&header_bytes[..])
-        .map_err(|e| Error::HeaderParseErr(e.to_string()))?;
-    Ok((pb, attached_document))
+/// Take the edek and create the v4 header, sign it and put the signature info into the header.
+/// Also encrypt the document using the key and return it. Produces the values required to call
+/// encode_edoc if you need an attached document.
+pub fn create_header_and_encrypt_document<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    edek_wrapper: icl_header_v4::v4document_header::EdekWrapper,
+    key: EncryptionKey,
+    document: PlaintextDocument,
+) -> Result<(V4DocumentHeader, EncryptedPayload), Error> {
+    let signed_payload = icl_header_v4::v4document_header::SignedPayload {
+        edeks: vec![edek_wrapper],
+        ..Default::default()
+    };
+    let signature_info = sign_header(key.0, &signed_payload);
+    let header = icl_header_v4::V4DocumentHeader {
+        signed_payload: Some(signed_payload).into(),
+        signature_info: Some(signature_info).into(),
+        ..Default::default()
+    };
+    let (iv, enc_data) = aes::aes_encrypt(key, &document.0, &[], rng)?;
+    let payload = EncryptedPayload(iv.into_iter().chain(enc_data.0).collect());
+    Ok((header, payload))
 }
 
 /// Construct an IronCore EDOC from the constituent parts.
@@ -139,6 +174,14 @@ pub fn encode_edoc(header: V4DocumentHeader, payload: EncryptedPayload) -> Resul
         .concat();
         Ok(result.into())
     }
+}
+
+pub fn decode_edoc(b: Bytes) -> Result<(V4DocumentHeader, EncryptedPayload), Error> {
+    let (header_bytes, attached_document) = get_v4_header_and_payload(b)?;
+
+    let pb = protobuf::Message::parse_from_bytes(&header_bytes[..])
+        .map_err(|e| Error::HeaderParseErr(e.to_string()))?;
+    Ok((pb, attached_document))
 }
 
 pub fn sign_header(key: [u8; AES_KEY_LEN], header_payload: &SignedPayload) -> SignatureInformation {
