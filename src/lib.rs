@@ -150,7 +150,7 @@ pub fn sign_header(key: [u8; AES_KEY_LEN], header_payload: &SignedPayload) -> Si
     let signature = signing::sign_hs256(key, &bytes);
 
     SignatureInformation {
-        signature: signature.0.into(),
+        signature: signature.0.to_vec().into(),
         signature_type: SignatureType::HS256.into(),
         ..Default::default()
     }
@@ -160,16 +160,20 @@ pub fn verify_signature(key: [u8; AES_KEY_LEN], header: &V4DocumentHeader) -> bo
     match header.signature_info.signature_type.enum_value() {
         Ok(SignatureType::NONE) => true,
         Ok(SignatureType::HS256) => {
-            signing::verify_hs256(
-                key,
-                //This unwrap can't actually ever happen because they create the coded stream with exactly the computed size before
-                //serializing.
-                &header
-                    .signed_payload
-                    .write_to_bytes()
-                    .expect("Writing proto to bytes failed."),
-                &signing::Signature(header.signature_info.signature.to_vec()),
-            )
+            if let Ok(signature_bytes) = header.signature_info.signature.to_vec().try_into() {
+                signing::verify_hs256(
+                    key,
+                    //This unwrap can't actually ever happen because they create the coded stream with exactly the computed size before
+                    //serializing.
+                    &header
+                        .signed_payload
+                        .write_to_bytes()
+                        .expect("Writing proto to bytes failed."),
+                    &signing::Signature(signature_bytes),
+                )
+            } else {
+                false
+            }
         }
         _ => false,
     }
@@ -290,7 +294,7 @@ mod test {
 
     #[test]
     fn sign_verify_roundtrip() {
-        let dek = [100u8; AES_KEY_LEN];
+        let dek: [u8; 32] = [100u8; AES_KEY_LEN];
         let aes_edek = Aes256GcmEncryptedDek {
             ciphertext: [42u8; 1024].as_ref().into(),
             ..Default::default()
@@ -315,5 +319,13 @@ mod test {
 
         header.signature_info = Some(sign_result).into();
         assert!(verify_signature(dek, &header));
+    }
+
+    #[test]
+    fn verify_known_good_sig_in_v4_header() {
+        let dek: [u8; 32] = [100u8; AES_KEY_LEN];
+        let bytes = hex_literal::hex!("0a240a2082e7f2abc390635636f59ea51f7736846d9b1e799f4e9b63733679a417a2c5cf10011289081286081a83081280082a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a");
+        let header = Message::parse_from_bytes(&bytes).unwrap();
+        assert!(verify_signature(dek, &header))
     }
 }
