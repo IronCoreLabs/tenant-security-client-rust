@@ -23,13 +23,13 @@ pub fn generate_aes_edek<R: CryptoRng + RngCore>(
         buffer
     };
     let (iv, edek) = aes_encrypt(kek, &document_key, &[], rng)?;
-    let aes_dek = icl_header_v4::v4document_header::edek_wrapper::Aes256GcmEncryptedDek {
+    let aes_edek = icl_header_v4::v4document_header::edek_wrapper::Aes256GcmEncryptedDek {
         ciphertext: edek.0.into(),
         iv: Bytes::copy_from_slice(&iv),
         id: id.into(),
         ..Default::default()
     };
-    Ok((EncryptionKey(document_key), aes_dek))
+    Ok((EncryptionKey(document_key), aes_edek))
 }
 
 pub(crate) fn aes_encrypt<R: RngCore + CryptoRng>(

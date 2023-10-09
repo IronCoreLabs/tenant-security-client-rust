@@ -66,6 +66,7 @@ impl Display for Error {
 const PRE_HEADER_LEN: usize = 7;
 const MAGIC: &[u8; 4] = b"IRON";
 const V4: u8 = 4u8;
+const V0: u8 = 0u8;
 
 // IronCore EDOC format, quick spec:
 //
@@ -75,6 +76,33 @@ const V4: u8 = 4u8;
 // Length of header (2 bytes, BE)
 // -- HEADER (proto) --
 // -- [optional] DATA --
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachedEncryptedPayload(pub Bytes);
+
+impl Default for AttachedEncryptedPayload {
+    fn default() -> AttachedEncryptedPayload {
+        AttachedEncryptedPayload([].as_ref().into())
+    }
+}
+
+impl From<Bytes> for AttachedEncryptedPayload {
+    fn from(b: Bytes) -> Self {
+        AttachedEncryptedPayload(b)
+    }
+}
+
+impl From<Vec<u8>> for AttachedEncryptedPayload {
+    fn from(v: Vec<u8>) -> Self {
+        AttachedEncryptedPayload(v.into())
+    }
+}
+
+impl From<AttachedEncryptedPayload> for Bytes {
+    fn from(p: AttachedEncryptedPayload) -> Self {
+        p.0
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptedPayload(pub Bytes);
@@ -103,7 +131,7 @@ impl From<EncryptedPayload> for Bytes {
     }
 }
 
-fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, EncryptedPayload), Error> {
+fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, AttachedEncryptedPayload), Error> {
     let initial_len = b.len();
     if initial_len >= PRE_HEADER_LEN {
         let first_byte = b.get_u8();
@@ -118,7 +146,7 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, EncryptedPayload), 
             if b.len() >= header_size {
                 //Break off the bytes after `header_size` and leave the header in `b`.
                 let rest = b.split_off(header_size);
-                Ok((b, EncryptedPayload(rest)))
+                Ok((b, AttachedEncryptedPayload(rest)))
             } else {
                 Err(Error::SpecifiedLengthTooLong(header_size as u32))
             }
@@ -130,10 +158,7 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, EncryptedPayload), 
     }
 }
 
-/// Take the edek and create the v4 header, sign it and put the signature info into the header.
-/// Also encrypt the document using the key and return it. Produces the values required to call
-/// encode_edoc if you need an attached document.
-pub fn create_header_and_encrypt_document<R: RngCore + CryptoRng>(
+pub fn create_header_and_detatched_document<R: RngCore + CryptoRng>(
     rng: &mut R,
     edek_wrapper: icl_header_v4::v4document_header::EdekWrapper,
     key: EncryptionKey,
@@ -150,12 +175,19 @@ pub fn create_header_and_encrypt_document<R: RngCore + CryptoRng>(
         ..Default::default()
     };
     let (iv, enc_data) = aes::aes_encrypt(key, &document.0, &[], rng)?;
-    let payload = EncryptedPayload(iv.into_iter().chain(enc_data.0).collect());
+    let payload = EncryptedPayload(
+        [&[V0], &MAGIC[..], &iv[..], &enc_data.0[..]]
+            .concat()
+            .into(),
+    );
     Ok((header, payload))
 }
 
 /// Construct an IronCore EDOC from the constituent parts.
-pub fn encode_edoc(header: V4DocumentHeader, payload: EncryptedPayload) -> Result<Bytes, Error> {
+pub fn encode_edoc(
+    header: V4DocumentHeader,
+    payload: AttachedEncryptedPayload,
+) -> Result<Bytes, Error> {
     let encoded_header: Vec<u8> = header
         .write_to_bytes()
         .map_err(|e| Error::ProtoSerializationErr(e.to_string()))?;
@@ -176,7 +208,7 @@ pub fn encode_edoc(header: V4DocumentHeader, payload: EncryptedPayload) -> Resul
     }
 }
 
-pub fn decode_edoc(b: Bytes) -> Result<(V4DocumentHeader, EncryptedPayload), Error> {
+pub fn decode_edoc(b: Bytes) -> Result<(V4DocumentHeader, AttachedEncryptedPayload), Error> {
     let (header_bytes, attached_document) = get_v4_header_and_payload(b)?;
 
     let pb = protobuf::Message::parse_from_bytes(&header_bytes[..])
@@ -233,7 +265,7 @@ mod test {
     #[test]
     fn edoc_encode_decode_roundtrip() -> Result<(), Error> {
         let header = V4DocumentHeader::default();
-        let payload = EncryptedPayload([42u8; 10].as_ref().into());
+        let payload = AttachedEncryptedPayload([42u8; 10].as_ref().into());
 
         // with payload
         let edoc = encode_edoc(header.clone(), payload.clone())?;
@@ -243,7 +275,7 @@ mod test {
         assert_eq!(decoded_payload, payload);
 
         // No payload
-        let edoc2 = encode_edoc(header.clone(), EncryptedPayload::default())?;
+        let edoc2 = encode_edoc(header.clone(), AttachedEncryptedPayload::default())?;
         let (decoded_header2, decoded_payload2) = decode_edoc(edoc2)?;
         assert!(decoded_payload2.0.is_empty());
         assert_eq!(&decoded_header2, &header);
@@ -273,7 +305,7 @@ mod test {
             ..Default::default()
         };
 
-        let result = encode_edoc(header, EncryptedPayload::default());
+        let result = encode_edoc(header, AttachedEncryptedPayload::default());
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -284,7 +316,7 @@ mod test {
     #[test]
     fn decode_bad_version() -> Result<(), Error> {
         let header = V4DocumentHeader::default();
-        let payload = EncryptedPayload([42u8; 10].as_ref().into());
+        let payload = AttachedEncryptedPayload([42u8; 10].as_ref().into());
 
         let mut edoc = encode_edoc(header, payload)?.to_vec();
         edoc[0] = 3;
@@ -305,7 +337,7 @@ mod test {
     fn decode_bad_magic() -> Result<(), Error> {
         let header = V4DocumentHeader::default();
 
-        let mut edoc = encode_edoc(header, EncryptedPayload::default())?.to_vec();
+        let mut edoc = encode_edoc(header, AttachedEncryptedPayload::default())?.to_vec();
         // bytes [1] to [4] should be IRON
         edoc[4] = b"M"[0];
         let result = decode_edoc(edoc.into());
@@ -318,7 +350,7 @@ mod test {
     fn decode_bad_header_len() -> Result<(), Error> {
         let header = V4DocumentHeader::default();
 
-        let mut edoc = encode_edoc(header, EncryptedPayload::default())?.to_vec();
+        let mut edoc = encode_edoc(header, AttachedEncryptedPayload::default())?.to_vec();
         // bytes [5] and [6] are a u16 saying how long the header is.
         // the data following must be at least as long as the header len
         let len = 1u16.to_be_bytes();
