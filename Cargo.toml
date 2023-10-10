@@ -18,3 +18,4 @@ protobuf-codegen = "3.3"
 
 [dev-dependencies]
 hex-literal = "0.4.1"
+rand_chacha = "0.3.1"

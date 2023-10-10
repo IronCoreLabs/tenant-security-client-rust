@@ -12,6 +12,19 @@ use std::fmt::{Display, Formatter, Result as DisplayResult};
 use thiserror::Error;
 
 include!(concat!(env!("OUT_DIR"), "/mod.rs"));
+// IronCore EDOC format, quick spec:
+//
+// -- PRE HEADER (7 bytes) --
+// 4                (1 byte)
+// IRON             (4 bytes)
+// Length of header (2 bytes, BE)
+// -- HEADER (proto) --
+// -- [optional] DATA --
+
+const PRE_HEADER_LEN: usize = 7;
+const MAGIC: &[u8; 4] = b"IRON";
+const V4: u8 = 4u8;
+const V0: u8 = 0u8;
 
 /// Holds bytes which are decrypted (The actual document bytes).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,20 +75,7 @@ impl Display for Error {
     }
 }
 
-const PRE_HEADER_LEN: usize = 7;
-const MAGIC: &[u8; 4] = b"IRON";
-const V4: u8 = 4u8;
-const V0: u8 = 0u8;
-
-// IronCore EDOC format, quick spec:
-//
-// -- PRE HEADER (7 bytes) --
-// 4                (1 byte)
-// IRON             (4 bytes)
-// Length of header (2 bytes, BE)
-// -- HEADER (proto) --
-// -- [optional] DATA --
-
+/// These bytes are an attached payload, which means IV + CIPHERTEXT with no header.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttachedEncryptedPayload(pub Bytes);
 
@@ -103,6 +103,7 @@ impl From<AttachedEncryptedPayload> for Bytes {
     }
 }
 
+/// These are detatched encrypted bytes, which means they have a `0IRON` + IV + CIPHERTEXT.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptedPayload(pub Bytes);
 
@@ -173,7 +174,7 @@ pub fn create_signed_header(
     }
 }
 
-/// Construct an IronCore EDOC from the constituent parts.
+/// Construct an IronCore attached EDOC from the constituent parts.
 pub fn encode_edoc(
     header: V4DocumentHeader,
     payload: AttachedEncryptedPayload,
@@ -198,6 +199,7 @@ pub fn encode_edoc(
     }
 }
 
+/// Breaks apart an attached edoc into its parts.
 pub fn decode_edoc(b: Bytes) -> Result<(V4DocumentHeader, AttachedEncryptedPayload), Error> {
     let (header_bytes, attached_document) = get_v4_header_and_payload(b)?;
 
