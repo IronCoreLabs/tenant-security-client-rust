@@ -7,7 +7,6 @@ use icl_header_v4::v4document_header::{
     signature_information::SignatureType, SignatureInformation, SignedPayload,
 };
 use protobuf::Message;
-use rand::{CryptoRng, RngCore};
 use signing::AES_KEY_LEN;
 use std::fmt::{Display, Formatter, Result as DisplayResult};
 use thiserror::Error;
@@ -158,29 +157,20 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, AttachedEncryptedPa
     }
 }
 
-pub fn create_header_and_detatched_document<R: RngCore + CryptoRng>(
-    rng: &mut R,
+pub fn create_signed_header(
     edek_wrapper: icl_header_v4::v4document_header::EdekWrapper,
-    key: EncryptionKey,
-    document: PlaintextDocument,
-) -> Result<(V4DocumentHeader, EncryptedPayload), Error> {
+    signing_key: EncryptionKey,
+) -> V4DocumentHeader {
     let signed_payload = icl_header_v4::v4document_header::SignedPayload {
         edeks: vec![edek_wrapper],
         ..Default::default()
     };
-    let signature_info = sign_header(key.0, &signed_payload);
-    let header = icl_header_v4::V4DocumentHeader {
+    let signature_info = sign_header(signing_key.0, &signed_payload);
+    icl_header_v4::V4DocumentHeader {
         signed_payload: Some(signed_payload).into(),
         signature_info: Some(signature_info).into(),
         ..Default::default()
-    };
-    let (iv, enc_data) = aes::aes_encrypt(key, &document.0, &[], rng)?;
-    let payload = EncryptedPayload(
-        [&[V0], &MAGIC[..], &iv[..], &enc_data.0[..]]
-            .concat()
-            .into(),
-    );
-    Ok((header, payload))
+    }
 }
 
 /// Construct an IronCore EDOC from the constituent parts.
