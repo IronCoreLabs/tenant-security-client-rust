@@ -1,0 +1,20 @@
+name: Rust CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: null
+  workflow_dispatch: null
+  schedule:
+    - cron: 0 14 * * 1
+jobs:
+  rust-ci:
+    uses: IronCoreLabs/workflows/.github/workflows/rust-ci.yaml@rust-ci-v0
+    with:
+      run_clippy: true
+    secrets: inherit
