@@ -9,7 +9,7 @@ use bytes::Bytes;
 use rand::{CryptoRng, RngCore};
 
 type Result<T> = core::result::Result<T, super::Error>;
-const DETATCHED_HEADER_LEN: usize = 5;
+const DETACHED_HEADER_LEN: usize = 5;
 const IV_LEN: usize = 12;
 
 pub fn generate_aes_edek<R: CryptoRng + RngCore>(
@@ -74,16 +74,16 @@ pub fn decrypt_aes_edek(
         .map(|dek_bytes| EncryptionKey(dek_bytes))
 }
 
-/// Decrypt a V4 detatched document. The document should have the expected header
-pub fn decrypt_detatched_document(
+/// Decrypt a V4 detached document. The document should have the expected header
+pub fn decrypt_detached_document(
     key: &EncryptionKey,
     payload: EncryptedPayload,
 ) -> Result<PlaintextDocument> {
     let payload_len = payload.0.len();
-    if payload_len < DETATCHED_HEADER_LEN + IV_LEN {
+    if payload_len < DETACHED_HEADER_LEN + IV_LEN {
         Err(Error::EdocTooShort(payload_len))
     } else {
-        let (header, iv_and_cipher) = payload.0.split_at(DETATCHED_HEADER_LEN);
+        let (header, iv_and_cipher) = payload.0.split_at(DETACHED_HEADER_LEN);
         if header != [&[V0], &MAGIC[..]].concat() {
             Err(Error::NoIronCoreMagic)
         } else {
@@ -96,9 +96,9 @@ pub fn decrypt_detatched_document(
     }
 }
 
-/// Encrypt a document to be used as a detatched document. This means it will have a header of `0IRON` as the first
+/// Encrypt a document to be used as a detached document. This means it will have a header of `0IRON` as the first
 /// 5 bytes.
-pub fn encrypt_detatched_document<R: RngCore + CryptoRng>(
+pub fn encrypt_detached_document<R: RngCore + CryptoRng>(
     rng: &mut R,
     key: EncryptionKey,
     document: PlaintextDocument,
@@ -234,14 +234,14 @@ mod test {
     }
 
     #[test]
-    fn encrypt_decrypt_detatched_document_roundtrips() {
+    fn encrypt_decrypt_detached_document_roundtrips() {
         let mut rng = ChaCha20Rng::seed_from_u64(172u64);
         let key = EncryptionKey(hex!(
             "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
         ));
         let plaintext = PlaintextDocument(vec![100u8, 200u8]);
-        let encrypted = encrypt_detatched_document(&mut rng, key, plaintext.clone()).unwrap();
-        let result = decrypt_detatched_document(&key, encrypted).unwrap();
+        let encrypted = encrypt_detached_document(&mut rng, key, plaintext.clone()).unwrap();
+        let result = decrypt_detached_document(&key, encrypted).unwrap();
         assert_eq!(result, plaintext);
     }
 
@@ -256,7 +256,7 @@ mod test {
                 .into(),
         );
 
-        let result = decrypt_detatched_document(&key, encrypted).unwrap_err();
+        let result = decrypt_detached_document(&key, encrypted).unwrap_err();
         assert_eq!(result, Error::NoIronCoreMagic);
     }
 
@@ -267,7 +267,7 @@ mod test {
         ));
         let encrypted = EncryptedPayload(hex!("0049524f4efa51").to_vec().into());
 
-        let result = decrypt_detatched_document(&key, encrypted).unwrap_err();
+        let result = decrypt_detached_document(&key, encrypted).unwrap_err();
         assert_eq!(result, Error::EdocTooShort(7));
     }
 }

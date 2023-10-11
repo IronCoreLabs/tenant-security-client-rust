@@ -103,7 +103,7 @@ impl From<AttachedEncryptedPayload> for Bytes {
     }
 }
 
-/// These are detatched encrypted bytes, which means they have a `0IRON` + IV + CIPHERTEXT.
+/// These are detached encrypted bytes, which means they have a `0IRON` + IV + CIPHERTEXT.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptedPayload(pub Bytes);
 
