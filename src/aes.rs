@@ -67,9 +67,9 @@ pub fn decrypt_aes_edek(
     })?;
     aes_decrypt(kek, iv, &aes_edek.ciphertext, &[])
         .and_then(|dek_bytes| {
-            dek_bytes
-                .try_into()
-                .map_err(|_| Error::DecryptError("iv was not of the correct size".to_string()))
+            dek_bytes.try_into().map_err(|_| {
+                Error::DecryptError("Decrypted AES DEK was not of the correct size".to_string())
+            })
         })
         .map(EncryptionKey)
 }
