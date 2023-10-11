@@ -117,10 +117,9 @@ pub(crate) fn aes_encrypt<R: RngCore + CryptoRng>(
     associated_data: &[u8],
     rng: &mut R,
 ) -> Result<([u8; 12], EncryptedDocument)> {
-    let cipher =
-        Aes256Gcm::new_from_slice(&key.0).expect("Key length 32 is always valid for Aes256Gcm");
+    let cipher = Aes256Gcm::new(&key.0.into());
     let iv = Aes256Gcm::generate_nonce(rng);
-    let enrcypted_bytes = cipher
+    let encrypted_bytes = cipher
         .encrypt(
             &iv,
             Payload {
@@ -129,7 +128,7 @@ pub(crate) fn aes_encrypt<R: RngCore + CryptoRng>(
             },
         )
         .map_err(|e| Error::EncryptError(e.to_string()))?;
-    Ok((iv.into(), EncryptedDocument(enrcypted_bytes)))
+    Ok((iv.into(), EncryptedDocument(encrypted_bytes)))
 }
 
 pub(crate) fn aes_decrypt(
@@ -138,8 +137,7 @@ pub(crate) fn aes_decrypt(
     ciphertext: &[u8],
     associated_data: &[u8],
 ) -> Result<Vec<u8>> {
-    let cipher =
-        Aes256Gcm::new_from_slice(&key.0).expect("Key length 32 is always valid for Aes256Gcm");
+    let cipher = Aes256Gcm::new(&key.0.into());
 
     cipher
         .decrypt(
