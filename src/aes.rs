@@ -71,7 +71,7 @@ pub fn decrypt_aes_edek(
                 .try_into()
                 .map_err(|_| Error::DecryptError("iv was not of the correct size".to_string()))
         })
-        .map(|dek_bytes| EncryptionKey(dek_bytes))
+        .map(EncryptionKey)
 }
 
 /// Decrypt a V4 detached document. The document should have the expected header
@@ -91,7 +91,7 @@ pub fn decrypt_detached_document(
             let iv = iv_slice
                 .try_into()
                 .expect("IV conversion will always have 12 bytes.");
-            aes_decrypt(key, iv, &ciphertext, &[]).map(PlaintextDocument)
+            aes_decrypt(key, iv, ciphertext, &[]).map(PlaintextDocument)
         }
     }
 }
