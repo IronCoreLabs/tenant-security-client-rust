@@ -83,18 +83,15 @@ pub fn decrypt_detatched_document(
     if payload_len < DETATCHED_HEADER_LEN + IV_LEN {
         Err(Error::EdocTooShort(payload_len))
     } else {
-        let header = payload.0.slice(0..DETATCHED_HEADER_LEN);
+        let (header, iv_and_cipher) = payload.0.split_at(DETATCHED_HEADER_LEN);
         if header != [&[V0], &MAGIC[..]].concat() {
             Err(Error::NoIronCoreMagic)
         } else {
-            let iv = payload
-                .0
-                .slice(DETATCHED_HEADER_LEN..(DETATCHED_HEADER_LEN + IV_LEN))
-                .as_ref()
+            let (iv_slice, ciphertext) = iv_and_cipher.split_at(IV_LEN);
+            let iv = iv_slice
                 .try_into()
                 .expect("IV conversion will always have 12 bytes.");
-            let ciphertext = payload.0.slice(DETATCHED_HEADER_LEN + IV_LEN..);
-            aes_decrypt(key, iv, &ciphertext[..], &[]).map(|v| PlaintextDocument(v))
+            aes_decrypt(key, iv, &ciphertext, &[]).map(PlaintextDocument)
         }
     }
 }
