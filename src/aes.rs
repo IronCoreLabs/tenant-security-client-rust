@@ -306,4 +306,17 @@ mod test {
         let result = decrypt_detached_document(&key, encrypted).unwrap_err();
         assert_eq!(result, Error::EdocTooShort(7));
     }
+
+    #[test]
+    fn encrypt_decrypt_attached_roundtrip() {
+        let mut rng = ChaCha20Rng::seed_from_u64(13u64);
+        let key = EncryptionKey(hex!(
+            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
+        ));
+        let document = vec![1u8];
+        let encrypted =
+            encrypt_attached_document(&mut rng, key, PlaintextDocument(document.clone())).unwrap();
+        let result = decrypt_attached_document(&key, encrypted).unwrap();
+        assert_eq!(result.0, document);
+    }
 }
