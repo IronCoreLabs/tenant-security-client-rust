@@ -2,7 +2,7 @@ use super::Error;
 use crate::{
     create_signed_header,
     icl_header_v4::{self, v4document_header::edek_wrapper::Edek},
-    EncryptedDocument, EncryptedPayload, EncryptionKey, PlaintextDocument, MAGIC, V0,
+    EncryptedPayload, MAGIC, V0,
 };
 use aes_gcm::{aead::Aead, aead::Payload, AeadCore, Aes256Gcm, KeyInit, Nonce};
 use bytes::Bytes;
@@ -11,6 +11,17 @@ use rand::{CryptoRng, RngCore};
 type Result<T> = core::result::Result<T, super::Error>;
 const DETACHED_HEADER_LEN: usize = 5;
 const IV_LEN: usize = 12;
+
+/// Holds bytes of an aes encrypted value
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncryptedDocument(pub Vec<u8>);
+
+/// Holds bytes which are decrypted (The actual document bytes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlaintextDocument(pub Vec<u8>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EncryptionKey(pub [u8; 32]);
 
 pub fn generate_aes_edek<R: CryptoRng + RngCore>(
     rng: &mut R,

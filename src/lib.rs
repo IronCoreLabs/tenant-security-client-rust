@@ -20,22 +20,12 @@ include!(concat!(env!("OUT_DIR"), "/mod.rs"));
 // Length of header (2 bytes, BE)
 // -- HEADER (proto) --
 // -- [optional] DATA --
+// The `AttachedEncryptedPayload` struct below is the DATA mentioned in this format
 
 const PRE_HEADER_LEN: usize = 7;
 const MAGIC: &[u8; 4] = b"IRON";
 const V4: u8 = 4u8;
 const V0: u8 = 0u8;
-
-/// Holds bytes which are decrypted (The actual document bytes).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlaintextDocument(pub Vec<u8>);
-
-/// Holds bytes of an aes encrypted value
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncryptedDocument(pub Vec<u8>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EncryptionKey(pub [u8; 32]);
 
 #[derive(Error, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Error {
@@ -75,7 +65,7 @@ impl Display for Error {
     }
 }
 
-/// These bytes are an attached payload, which means IV + CIPHERTEXT with no header.
+/// These bytes are an attached payload, which means IV + CIPHERTEXT.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttachedEncryptedPayload(pub Bytes);
 
@@ -160,7 +150,7 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, AttachedEncryptedPa
 
 pub fn create_signed_header(
     edek_wrapper: icl_header_v4::v4document_header::EdekWrapper,
-    signing_key: EncryptionKey,
+    signing_key: aes::EncryptionKey,
 ) -> V4DocumentHeader {
     let signed_payload = icl_header_v4::v4document_header::SignedPayload {
         edeks: vec![edek_wrapper],
@@ -175,7 +165,7 @@ pub fn create_signed_header(
 }
 
 /// Construct an IronCore attached EDOC from the constituent parts.
-pub fn encode_edoc(
+pub fn encode_attached_edoc(
     header: V4DocumentHeader,
     payload: AttachedEncryptedPayload,
 ) -> Result<Bytes, Error> {
@@ -200,7 +190,9 @@ pub fn encode_edoc(
 }
 
 /// Breaks apart an attached edoc into its parts.
-pub fn decode_edoc(b: Bytes) -> Result<(V4DocumentHeader, AttachedEncryptedPayload), Error> {
+pub fn decode_attached_edoc(
+    b: Bytes,
+) -> Result<(V4DocumentHeader, AttachedEncryptedPayload), Error> {
     let (header_bytes, attached_document) = get_v4_header_and_payload(b)?;
 
     let pb = protobuf::Message::parse_from_bytes(&header_bytes[..])
@@ -260,15 +252,15 @@ mod test {
         let payload = AttachedEncryptedPayload([42u8; 10].as_ref().into());
 
         // with payload
-        let edoc = encode_edoc(header.clone(), payload.clone())?;
-        let (decoded_header, decoded_payload) = decode_edoc(edoc)?;
+        let edoc = encode_attached_edoc(header.clone(), payload.clone())?;
+        let (decoded_header, decoded_payload) = decode_attached_edoc(edoc)?;
 
         assert_eq!(&decoded_header, &header);
         assert_eq!(decoded_payload, payload);
 
         // No payload
-        let edoc2 = encode_edoc(header.clone(), AttachedEncryptedPayload::default())?;
-        let (decoded_header2, decoded_payload2) = decode_edoc(edoc2)?;
+        let edoc2 = encode_attached_edoc(header.clone(), AttachedEncryptedPayload::default())?;
+        let (decoded_header2, decoded_payload2) = decode_attached_edoc(edoc2)?;
         assert!(decoded_payload2.0.is_empty());
         assert_eq!(&decoded_header2, &header);
         Ok(())
@@ -297,7 +289,7 @@ mod test {
             ..Default::default()
         };
 
-        let result = encode_edoc(header, AttachedEncryptedPayload::default());
+        let result = encode_attached_edoc(header, AttachedEncryptedPayload::default());
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -310,9 +302,9 @@ mod test {
         let header = V4DocumentHeader::default();
         let payload = AttachedEncryptedPayload([42u8; 10].as_ref().into());
 
-        let mut edoc = encode_edoc(header, payload)?.to_vec();
+        let mut edoc = encode_attached_edoc(header, payload)?.to_vec();
         edoc[0] = 3;
-        let result = decode_edoc(edoc.into());
+        let result = decode_attached_edoc(edoc.into());
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::InvalidVersion(3)));
         Ok(())
@@ -320,7 +312,7 @@ mod test {
 
     #[test]
     fn decode_too_short() {
-        let result = decode_edoc(vec![7u8].into());
+        let result = decode_attached_edoc(vec![7u8].into());
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::EdocTooShort(1)));
     }
@@ -329,10 +321,10 @@ mod test {
     fn decode_bad_magic() -> Result<(), Error> {
         let header = V4DocumentHeader::default();
 
-        let mut edoc = encode_edoc(header, AttachedEncryptedPayload::default())?.to_vec();
+        let mut edoc = encode_attached_edoc(header, AttachedEncryptedPayload::default())?.to_vec();
         // bytes [1] to [4] should be IRON
         edoc[4] = b"M"[0];
-        let result = decode_edoc(edoc.into());
+        let result = decode_attached_edoc(edoc.into());
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::NoIronCoreMagic));
         Ok(())
@@ -342,7 +334,7 @@ mod test {
     fn decode_bad_header_len() -> Result<(), Error> {
         let header = V4DocumentHeader::default();
 
-        let mut edoc = encode_edoc(header, AttachedEncryptedPayload::default())?.to_vec();
+        let mut edoc = encode_attached_edoc(header, AttachedEncryptedPayload::default())?.to_vec();
         // bytes [5] and [6] are a u16 saying how long the header is.
         // the data following must be at least as long as the header len
         let len = 1u16.to_be_bytes();
@@ -350,7 +342,7 @@ mod test {
 
         edoc[5] = len[0];
         edoc[6] = len[1];
-        let result = decode_edoc(edoc.into());
+        let result = decode_attached_edoc(edoc.into());
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
