@@ -2,7 +2,7 @@ use super::Error;
 use crate::{
     create_signed_header,
     icl_header_v4::{self, v4document_header::edek_wrapper::Edek},
-    EncryptedPayload, MAGIC, V0,
+    AttachedEncryptedPayload, EncryptedPayload, MAGIC, V0,
 };
 use aes_gcm::{aead::Aead, aead::Payload, AeadCore, Aes256Gcm, KeyInit, Nonce};
 use bytes::Bytes;
@@ -122,6 +122,19 @@ pub fn encrypt_detached_document<R: RngCore + CryptoRng>(
     );
     Ok(payload)
 }
+
+/// Encrypt a document to be used as an attached document.
+pub fn encrypt_attached_document<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    key: EncryptionKey,
+    document: PlaintextDocument,
+) -> Result<AttachedEncryptedPayload> {
+    let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
+    Ok(AttachedEncryptedPayload(
+        [&iv[..], &enc_data.0[..]].concat().into(),
+    ))
+}
+
 pub(crate) fn aes_encrypt<R: RngCore + CryptoRng>(
     key: EncryptionKey,
     plaintext: &[u8],
