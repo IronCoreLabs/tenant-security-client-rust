@@ -98,13 +98,27 @@ pub fn decrypt_detached_document(
         if header != [&[V0], &MAGIC[..]].concat() {
             Err(Error::NoIronCoreMagic)
         } else {
-            let (iv_slice, ciphertext) = iv_and_cipher.split_at(IV_LEN);
-            let iv = iv_slice
-                .try_into()
-                .expect("IV conversion will always have 12 bytes.");
-            aes_decrypt(key, iv, ciphertext, &[]).map(PlaintextDocument)
+            decrypt_attached_document_core(key, iv_and_cipher)
         }
     }
+}
+
+pub fn decrypt_attached_document(
+    key: &EncryptionKey,
+    payload: AttachedEncryptedPayload,
+) -> Result<PlaintextDocument> {
+    decrypt_attached_document_core(key, &payload.0)
+}
+
+fn decrypt_attached_document_core(
+    key: &EncryptionKey,
+    attached_encrypted_payload: &[u8],
+) -> std::result::Result<PlaintextDocument, Error> {
+    let (iv_slice, ciphertext) = attached_encrypted_payload.split_at(IV_LEN);
+    let iv = iv_slice
+        .try_into()
+        .expect("IV conversion will always have 12 bytes.");
+    aes_decrypt(key, iv, ciphertext, &[]).map(PlaintextDocument)
 }
 
 /// Encrypt a document to be used as a detached document. This means it will have a header of `0IRON` as the first
