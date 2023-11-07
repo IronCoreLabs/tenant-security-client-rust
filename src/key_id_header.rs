@@ -43,13 +43,10 @@ impl EdekType {
         }
     }
     pub fn create_header(&self, key_id: KeyId) -> Bytes {
-        let mut vec = Vec::with_capacity(6);
-        for b in u32::to_be_bytes(key_id.0) {
-            vec.push(b);
-        }
-        vec.push(self.to_numeric_value());
-        vec.push(0u8);
-        vec.into()
+        let iter = u32::to_be_bytes(key_id.0)
+            .into_iter()
+            .chain([self.to_numeric_value(), 0u8]);
+        Bytes::from_iter(iter)
     }
 
     pub(crate) fn parse_from_bytes(b: Bytes) -> Result<EdekType> {
