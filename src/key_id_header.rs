@@ -42,9 +42,9 @@ impl EdekType {
             ))
         }
     }
-    pub fn create_header(&self, key_id: u32) -> Bytes {
+    pub fn create_header(&self, key_id: KeyId) -> Bytes {
         let mut vec = Vec::with_capacity(6);
-        for b in u32::to_be_bytes(key_id) {
+        for b in u32::to_be_bytes(key_id.0) {
             vec.push(b);
         }
         vec.push(self.to_numeric_value());
@@ -66,7 +66,7 @@ pub fn create_vector_metadata(
     iv: Bytes,
     auth_hash: Bytes,
 ) -> (Bytes, VectorEncryptionMetadata) {
-    let key_id_header = edek_type.create_header(key_id.0);
+    let key_id_header = edek_type.create_header(key_id);
     let vector_encryption_metadata = VectorEncryptionMetadata {
         iv,
         auth_hash,
@@ -109,6 +109,10 @@ pub fn decode_version_prefixed_value(mut value: Bytes) -> Result<(KeyId, EdekTyp
     } else {
         Err(Error::KeyIdHeaderTooShort(value_len))
     }
+}
+
+pub fn get_prefix_bytes_for_search(key_id: KeyId, edek_type: EdekType) -> Bytes {
+    edek_type.create_header(key_id)
 }
 
 #[cfg(test)]
