@@ -67,6 +67,8 @@ impl Display for Error {
             Error::HeaderLengthOverflow(x) => write!(f, "HeaderLengthOverflow({x})"),
             Error::EncryptError(x) => write!(f, "EncryptError({x})"),
             Error::DecryptError(x) => write!(f, "DecryptError({x})"),
+            Error::KeyIdHeaderTooShort(x) => write!(f, "KeyIdHeaderTooShort({x})"),
+            Error::EdekTypeError(x) => write!(f, "EdekTypeError({x})"),
         }
     }
 }
