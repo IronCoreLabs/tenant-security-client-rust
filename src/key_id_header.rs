@@ -9,9 +9,12 @@ use crate::{vector_encryption_metadata::VectorEncryptionMetadata, Error};
 // 4 Byte id. This value is a u32 encoded in big endian format.
 // 1 Byte where the first 4 bits are used for which type of edek the id points to (Standalone, Saas Shield, DCP).
 //   The next 4 bits are to denote which type of data follows it (vector metadata, IronCore Edoc, deterministic ciphertext)
-
+// 1 Byte of 0
 const SAAS_SHIELD_EDEK_TYPE_NUM: u8 = 0u8;
 const STANDALONE_EDEK_TYPE_NUM: u8 = 128u8;
+const DCP_EDEK_TYPE_NUM: u8 = 64u8;
+
+const KEY_ID_HEADER_LEN: usize = 6;
 
 type Result<A> = std::result::Result<A, super::Error>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,8 +22,9 @@ pub struct KeyId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EdekType {
-    SaasShield,
     Standalone,
+    SaasShield,
+    DataControlPlatform,
 }
 
 impl EdekType {
@@ -28,6 +32,7 @@ impl EdekType {
         match self {
             EdekType::SaasShield => SAAS_SHIELD_EDEK_TYPE_NUM,
             EdekType::Standalone => STANDALONE_EDEK_TYPE_NUM,
+            EdekType::DataControlPlatform => DCP_EDEK_TYPE_NUM,
         }
     }
 
@@ -42,6 +47,7 @@ impl EdekType {
             ))
         }
     }
+    ///
     pub fn create_header(&self, key_id: KeyId) -> Bytes {
         let iter = u32::to_be_bytes(key_id.0)
             .into_iter()
@@ -49,14 +55,20 @@ impl EdekType {
         Bytes::from_iter(iter)
     }
 
-    pub(crate) fn parse_from_bytes(b: Bytes) -> Result<EdekType> {
+    pub(crate) fn parse_from_bytes(b: &[u8]) -> Result<EdekType> {
         b.first()
-            .ok_or_else(|| Error::EdekTypeError("EdekType couldn't be determined.".to_string()))
+            .ok_or_else(|| {
+                Error::EdekTypeError(
+                    "Bytes were empty and couldn't be converted to an EdekType.".to_string(),
+                )
+            })
             .and_then(Self::from_numeric_value)
     }
 }
 
-// TODO: Payload type not implemented here yet.
+/// Create the key_id_header and vector metadata. The first value is the key_id header and the
+/// second is the vector metadata. These can be passed to encode_vector_metadata to create a single
+/// byte string.
 pub fn create_vector_metadata(
     edek_type: EdekType,
     key_id: KeyId,
@@ -93,21 +105,23 @@ pub fn encode_vector_metadata(
 /// This returns the key id, edek type and the remaining bytes.
 pub fn decode_version_prefixed_value(mut value: Bytes) -> Result<(KeyId, EdekType, Bytes)> {
     let value_len = value.len();
-    if value_len >= 6 {
-        let rest = value.split_off(6);
-        let padding_bytes = value.split_off(4);
-        let id = {
-            let id_byte_sized: [u8; 4] = value.to_vec().try_into().unwrap();
-            KeyId(u32::from_be_bytes(id_byte_sized))
-        };
-        // What's left in header is 2 bytes for the padding
-        let edek_type = EdekType::parse_from_bytes(padding_bytes)?;
-        Ok((id, edek_type, rest))
+    if value_len >= KEY_ID_HEADER_LEN {
+        let rest = value.split_off(KEY_ID_HEADER_LEN);
+        match value[..] {
+            [one, two, three, four, five, six] => {
+                let id = KeyId(u32::from_be_bytes([one, two, three, four]));
+                let edek_type = EdekType::parse_from_bytes(&[five, six])?;
+                Ok((id, edek_type, rest))
+            }
+            // This should not ever be able to happen since we sliced off 6 above
+            _ => Err(Error::KeyIdHeaderTooShort(value_len)),
+        }
     } else {
         Err(Error::KeyIdHeaderTooShort(value_len))
     }
 }
 
+/// Get the bytes that can be used for a prefix search of key_id headers.
 pub fn get_prefix_bytes_for_search(key_id: KeyId, edek_type: EdekType) -> Bytes {
     edek_type.create_header(key_id)
 }
