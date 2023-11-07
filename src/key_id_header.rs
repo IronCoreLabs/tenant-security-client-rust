@@ -24,7 +24,7 @@ pub enum EdekType {
 }
 
 impl EdekType {
-    pub(crate) fn to_numeric_value(&self) -> u8 {
+    pub(crate) fn to_numeric_value(self) -> u8 {
         match self {
             EdekType::SaasShield => SAAS_SHIELD_EDEK_TYPE_NUM,
             EdekType::Standalone => STANDALONE_EDEK_TYPE_NUM,
@@ -68,8 +68,8 @@ pub fn create_vector_metadata(
 ) -> (Bytes, VectorEncryptionMetadata) {
     let key_id_header = edek_type.create_header(key_id.0);
     let vector_encryption_metadata = VectorEncryptionMetadata {
-        iv: iv.into(),
-        auth_hash: auth_hash.into(),
+        iv,
+        auth_hash,
         ..Default::default()
     };
     (key_id_header, vector_encryption_metadata)
