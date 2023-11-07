@@ -47,7 +47,7 @@ impl EdekType {
             ))
         }
     }
-    ///
+    /// Creates the key_id header for this edek type and the provided key_id.
     pub fn create_header(&self, key_id: KeyId) -> Bytes {
         let iter = u32::to_be_bytes(key_id.0)
             .into_iter()
