@@ -1,4 +1,5 @@
 pub mod aes;
+pub mod key_id_header;
 mod signing;
 
 use self::icl_header_v4::V4DocumentHeader;
@@ -47,6 +48,11 @@ pub enum Error {
     EncryptError(String),
     /// Decryption of the edoc failed.
     DecryptError(String),
+    // The next errors have to do with the key_id_header
+    /// EdekType was not recognized
+    EdekTypeError(String),
+    /// key_id_header to short
+    KeyIdHeaderTooShort(usize),
 }
 
 impl Display for Error {

@@ -1,11 +1,10 @@
 syntax = "proto3";
-package ironcorelabs.proto.cloakedai;
+package ironcorelabs.proto.vector;
 
 option java_package = "com.ironcorelabs.proto";
 option java_outer_classname = "EncryptedDekProtos";
 
-message VectorEncryptionHeader {
-    uint32 secret_id = 1;
+message VectorEncryptionMetadata {
     bytes iv = 2;
     bytes auth_hash = 3;
 }
