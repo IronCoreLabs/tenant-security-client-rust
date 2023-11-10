@@ -10,15 +10,56 @@ use crate::{vector_encryption_metadata::VectorEncryptionMetadata, Error};
 // 1 Byte where the first 4 bits are used for which type of edek the id points to (Standalone, Saas Shield, DCP).
 //   The next 4 bits are to denote which type of data follows it (vector metadata, IronCore Edoc, deterministic ciphertext)
 // 1 Byte of 0
+
+// EdekType numeric values. Note that in order to compare to these values you must bitmask
+// off the bottom 4 bits of the byte first.
 const SAAS_SHIELD_EDEK_TYPE_NUM: u8 = 0u8;
 const STANDALONE_EDEK_TYPE_NUM: u8 = 128u8;
 const DCP_EDEK_TYPE_NUM: u8 = 64u8;
+
+// PayloadType numeric values.Note that in order to compare to these values you must bitmask
+// off the top 4 bits of the byte first.
+const DETERMINISTIC_PAYLOAD_TYPE_NUM: u8 = 0u8;
+const VECTOR_METADATA_PAYLOAD_TYPE_NUM: u8 = 1u8;
+const STANDARD_EDEK_PAYLOAD_TYPE_NUM: u8 = 2u8;
 
 const KEY_ID_HEADER_LEN: usize = 6;
 
 type Result<A> = std::result::Result<A, super::Error>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PayloadType {
+    DeterministicField,
+    VectorMetadata,
+    StandardEdek,
+}
+
+impl PayloadType {
+    pub(crate) fn to_numeric_value(self) -> u8 {
+        match self {
+            PayloadType::DeterministicField => DETERMINISTIC_PAYLOAD_TYPE_NUM,
+            PayloadType::VectorMetadata => VECTOR_METADATA_PAYLOAD_TYPE_NUM,
+            PayloadType::StandardEdek => STANDARD_EDEK_PAYLOAD_TYPE_NUM,
+        }
+    }
+
+    pub(crate) fn from_numeric_value(candidate: &u8) -> Result<PayloadType> {
+        let masked_candidate = candidate & 0x0F; // Mask off the top 4 bits.
+        if masked_candidate == DETERMINISTIC_PAYLOAD_TYPE_NUM {
+            Ok(PayloadType::DeterministicField)
+        } else if masked_candidate == VECTOR_METADATA_PAYLOAD_TYPE_NUM {
+            Ok(PayloadType::VectorMetadata)
+        } else if masked_candidate == STANDARD_EDEK_PAYLOAD_TYPE_NUM {
+            Ok(PayloadType::StandardEdek)
+        } else {
+            Err(Error::PayloadTypeError(
+                "Byte {candidate} isn't a valid payload type.".to_string(),
+            ))
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EdekType {
@@ -37,32 +78,63 @@ impl EdekType {
     }
 
     pub(crate) fn from_numeric_value(candidate: &u8) -> Result<EdekType> {
-        if candidate == &SAAS_SHIELD_EDEK_TYPE_NUM {
+        let masked_candidate = candidate & 0xF0; // Mask off the bottom 4 bits.
+        if masked_candidate == SAAS_SHIELD_EDEK_TYPE_NUM {
             Ok(EdekType::SaasShield)
-        } else if candidate == &STANDALONE_EDEK_TYPE_NUM {
+        } else if masked_candidate == STANDALONE_EDEK_TYPE_NUM {
             Ok(EdekType::Standalone)
+        } else if masked_candidate == DCP_EDEK_TYPE_NUM {
+            Ok(EdekType::DataControlPlatform)
         } else {
-            Err(Error::EdekTypeError(
-                "Byte {candidate} isn't a valid edek type.".to_string(),
-            ))
+            Err(Error::EdekTypeError(format!(
+                "Byte {masked_candidate} isn't a valid edek type."
+            )))
         }
     }
-    /// Creates the key_id header for this edek type and the provided key_id.
-    pub fn create_header(&self, key_id: KeyId) -> Bytes {
-        let iter = u32::to_be_bytes(key_id.0)
-            .into_iter()
-            .chain([self.to_numeric_value(), 0u8]);
+}
+
+/// The key id header parsed into its pieces.
+pub struct KeyIdHeader {
+    pub key_id: KeyId,
+    pub edek_type: EdekType,
+    pub payload_type: PayloadType,
+}
+
+impl KeyIdHeader {
+    pub fn new(edek_type: EdekType, payload_type: PayloadType, key_id: KeyId) -> KeyIdHeader {
+        KeyIdHeader {
+            edek_type,
+            payload_type,
+            key_id,
+        }
+    }
+    /// Write the header to bytes. This is done by writing the key_id to be 4 bytes, putting the edek and payload types into
+    /// the next byte and padding with a zero. See the comment at the top of this file for more information.
+    pub fn write_to_bytes(&self) -> Bytes {
+        let iter = u32::to_be_bytes(self.key_id.0).into_iter().chain([
+            self.edek_type.to_numeric_value() | self.payload_type.to_numeric_value(),
+            0u8,
+        ]);
         Bytes::from_iter(iter)
     }
 
-    pub(crate) fn parse_from_bytes(b: &[u8]) -> Result<EdekType> {
-        b.first()
-            .ok_or_else(|| {
-                Error::EdekTypeError(
-                    "Bytes were empty and couldn't be converted to an EdekType.".to_string(),
-                )
+    /// This is not public because callers should use use decode_version_prefixed_value instead.
+    pub(crate) fn parse_from_bytes(b: [u8; 6]) -> Result<KeyIdHeader> {
+        let [one, two, three, four, five, six] = b;
+        if six == 0u8 {
+            let key_id = KeyId(u32::from_be_bytes([one, two, three, four]));
+            let edek_type = EdekType::from_numeric_value(&five)?;
+            let payload_type = PayloadType::from_numeric_value(&five)?;
+            Ok(KeyIdHeader {
+                edek_type,
+                payload_type,
+                key_id,
             })
-            .and_then(Self::from_numeric_value)
+        } else {
+            Err(Error::KeyIdHeaderMalformed(format!(
+                "The last byte of the header should be 0, but it was {six}"
+            )))
+        }
     }
 }
 
@@ -70,27 +142,25 @@ impl EdekType {
 /// second is the vector metadata. These can be passed to encode_vector_metadata to create a single
 /// byte string.
 pub fn create_vector_metadata(
-    edek_type: EdekType,
-    key_id: KeyId,
+    key_id_header: KeyIdHeader,
     iv: Bytes,
     auth_hash: Bytes,
 ) -> (Bytes, VectorEncryptionMetadata) {
-    let key_id_header = edek_type.create_header(key_id);
     let vector_encryption_metadata = VectorEncryptionMetadata {
         iv,
         auth_hash,
         ..Default::default()
     };
-    (key_id_header, vector_encryption_metadata)
+    (key_id_header.write_to_bytes(), vector_encryption_metadata)
 }
 
 /// Form the bytes that represent the vector metadata to the outside world.
 /// This is the protobuf with the key_id_header put onto the front.
 pub fn encode_vector_metadata(
-    key_id_header: Bytes,
+    key_id_header_bytes: Bytes,
     vector_metadata: VectorEncryptionMetadata,
 ) -> Bytes {
-    key_id_header
+    key_id_header_bytes
         .into_iter()
         .chain(
             vector_metadata
@@ -103,15 +173,15 @@ pub fn encode_vector_metadata(
 
 /// Decode a value which has the key_id_header put on the front by breaking it up.
 /// This returns the key id, edek type and the remaining bytes.
-pub fn decode_version_prefixed_value(mut value: Bytes) -> Result<(KeyId, EdekType, Bytes)> {
+pub fn decode_version_prefixed_value(mut value: Bytes) -> Result<(KeyIdHeader, Bytes)> {
     let value_len = value.len();
     if value_len >= KEY_ID_HEADER_LEN {
         let rest = value.split_off(KEY_ID_HEADER_LEN);
         match value[..] {
             [one, two, three, four, five, six] => {
-                let id = KeyId(u32::from_be_bytes([one, two, three, four]));
-                let edek_type = EdekType::parse_from_bytes(&[five, six])?;
-                Ok((id, edek_type, rest))
+                let key_id_header =
+                    KeyIdHeader::parse_from_bytes([one, two, three, four, five, six])?;
+                Ok((key_id_header, rest))
             }
             // This should not ever be able to happen since we sliced off 6 above
             _ => Err(Error::KeyIdHeaderTooShort(value_len)),
@@ -122,8 +192,8 @@ pub fn decode_version_prefixed_value(mut value: Bytes) -> Result<(KeyId, EdekTyp
 }
 
 /// Get the bytes that can be used for a prefix search of key_id headers.
-pub fn get_prefix_bytes_for_search(key_id: KeyId, edek_type: EdekType) -> Bytes {
-    edek_type.create_header(key_id)
+pub fn get_prefix_bytes_for_search(key_id_header: KeyIdHeader) -> Bytes {
+    key_id_header.write_to_bytes()
 }
 
 #[cfg(test)]
@@ -135,8 +205,11 @@ mod test {
         let iv_bytes: Bytes = (1..12).collect_vec().into();
         let auth_hash_bytes: Bytes = (1..16).collect_vec().into();
         let (header, result) = create_vector_metadata(
-            EdekType::SaasShield,
-            KeyId(72000),
+            KeyIdHeader::new(
+                EdekType::SaasShield,
+                PayloadType::DeterministicField,
+                KeyId(72000),
+            ),
             iv_bytes.clone(),
             auth_hash_bytes.clone(),
         );
@@ -153,8 +226,11 @@ mod test {
         let iv_bytes: Bytes = (1..12).collect_vec().into();
         let auth_hash_bytes: Bytes = (1..16).collect_vec().into();
         let (header, result) = create_vector_metadata(
-            EdekType::Standalone,
-            KeyId(72000),
+            KeyIdHeader::new(
+                EdekType::Standalone,
+                PayloadType::DeterministicField,
+                KeyId(72000),
+            ),
             iv_bytes.clone(),
             auth_hash_bytes.clone(),
         );
@@ -172,17 +248,64 @@ mod test {
         let auth_hash_bytes: Bytes = (1..16).collect_vec().into();
         let key_id = KeyId(72000);
         let (header, result) = create_vector_metadata(
-            EdekType::Standalone,
-            key_id,
+            KeyIdHeader::new(EdekType::Standalone, PayloadType::StandardEdek, key_id),
             iv_bytes.clone(),
             auth_hash_bytes.clone(),
         );
 
         let encode_result = encode_vector_metadata(header, result.clone());
-        let (final_key_id, final_edek_type, final_vector_bytes) =
+        let (final_key_id_header, final_vector_bytes) =
             decode_version_prefixed_value(encode_result).unwrap();
-        assert_eq!(final_key_id, key_id);
-        assert_eq!(final_edek_type, EdekType::Standalone);
+        assert_eq!(final_key_id_header.key_id, key_id);
+        assert_eq!(final_key_id_header.edek_type, EdekType::Standalone);
+        assert_eq!(final_key_id_header.payload_type, PayloadType::StandardEdek);
         assert_eq!(final_vector_bytes, result.write_to_bytes().unwrap());
+    }
+
+    fn edek_type_roundtrip(e: EdekType) -> Result<EdekType> {
+        EdekType::from_numeric_value(&e.to_numeric_value())
+    }
+    #[test]
+    fn test_edek_type_to_and_from_roundtrip() {
+        let all_types = [
+            EdekType::Standalone,
+            EdekType::SaasShield,
+            EdekType::DataControlPlatform,
+        ];
+
+        // If you add to this match, add to the array above otherwise the test will pass but you won't be testing them all.
+        for e in all_types {
+            match e {
+                EdekType::Standalone => edek_type_roundtrip(EdekType::Standalone),
+                EdekType::SaasShield => edek_type_roundtrip(EdekType::SaasShield),
+                EdekType::DataControlPlatform => edek_type_roundtrip(EdekType::DataControlPlatform),
+            }
+            .unwrap();
+        }
+    }
+
+    fn payload_type_roundtrip(e: PayloadType) -> Result<PayloadType> {
+        PayloadType::from_numeric_value(&e.to_numeric_value())
+    }
+
+    #[test]
+    fn test_payload_type_to_and_from_roundtrip() {
+        let all_types = [
+            PayloadType::DeterministicField,
+            PayloadType::VectorMetadata,
+            PayloadType::StandardEdek,
+        ];
+
+        // If you add to this match, add to the array above otherwise the test will pass but you won't be testing them all.
+        for e in all_types {
+            match e {
+                PayloadType::DeterministicField => {
+                    payload_type_roundtrip(PayloadType::DeterministicField)
+                }
+                PayloadType::VectorMetadata => payload_type_roundtrip(PayloadType::VectorMetadata),
+                PayloadType::StandardEdek => payload_type_roundtrip(PayloadType::StandardEdek),
+            }
+            .unwrap();
+        }
     }
 }

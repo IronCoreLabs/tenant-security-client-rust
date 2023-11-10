@@ -51,8 +51,12 @@ pub enum Error {
     // The next errors have to do with the key_id_header
     /// EdekType was not recognized
     EdekTypeError(String),
+    /// PayloadType was not recognized
+    PayloadTypeError(String),
     /// key_id_header to short
     KeyIdHeaderTooShort(usize),
+    /// key_id_header malformed
+    KeyIdHeaderMalformed(String),
 }
 
 impl Display for Error {
@@ -69,6 +73,8 @@ impl Display for Error {
             Error::DecryptError(x) => write!(f, "DecryptError({x})"),
             Error::KeyIdHeaderTooShort(x) => write!(f, "KeyIdHeaderTooShort({x})"),
             Error::EdekTypeError(x) => write!(f, "EdekTypeError({x})"),
+            Error::PayloadTypeError(x) => write!(f, "PayloadTypeError({x})"),
+            Error::KeyIdHeaderMalformed(x) => write!(f, "KeyIdHeaderMalformed({x})"),
         }
     }
 }
