@@ -47,16 +47,13 @@ impl PayloadType {
 
     pub(crate) fn from_numeric_value(candidate: &u8) -> Result<PayloadType> {
         let masked_candidate = candidate & 0x0F; // Mask off the top 4 bits.
-        if masked_candidate == DETERMINISTIC_PAYLOAD_TYPE_NUM {
-            Ok(PayloadType::DeterministicField)
-        } else if masked_candidate == VECTOR_METADATA_PAYLOAD_TYPE_NUM {
-            Ok(PayloadType::VectorMetadata)
-        } else if masked_candidate == STANDARD_EDEK_PAYLOAD_TYPE_NUM {
-            Ok(PayloadType::StandardEdek)
-        } else {
-            Err(Error::PayloadTypeError(
-                "Byte {candidate} isn't a valid payload type.".to_string(),
-            ))
+        match masked_candidate {
+            DETERMINISTIC_PAYLOAD_TYPE_NUM => Ok(PayloadType::DeterministicField),
+            VECTOR_METADATA_PAYLOAD_TYPE_NUM => Ok(PayloadType::VectorMetadata),
+            STANDARD_EDEK_PAYLOAD_TYPE_NUM => Ok(PayloadType::StandardEdek),
+            _ => Err(Error::PayloadTypeError(format!(
+                "Byte {masked_candidate} isn't a valid payload type."
+            ))),
         }
     }
 }
@@ -79,16 +76,13 @@ impl EdekType {
 
     pub(crate) fn from_numeric_value(candidate: &u8) -> Result<EdekType> {
         let masked_candidate = candidate & 0xF0; // Mask off the bottom 4 bits.
-        if masked_candidate == SAAS_SHIELD_EDEK_TYPE_NUM {
-            Ok(EdekType::SaasShield)
-        } else if masked_candidate == STANDALONE_EDEK_TYPE_NUM {
-            Ok(EdekType::Standalone)
-        } else if masked_candidate == DCP_EDEK_TYPE_NUM {
-            Ok(EdekType::DataControlPlatform)
-        } else {
-            Err(Error::EdekTypeError(format!(
+        match masked_candidate {
+            SAAS_SHIELD_EDEK_TYPE_NUM => Ok(EdekType::SaasShield),
+            STANDALONE_EDEK_TYPE_NUM => Ok(EdekType::Standalone),
+            DCP_EDEK_TYPE_NUM => Ok(EdekType::DataControlPlatform),
+            _ => Err(Error::EdekTypeError(format!(
                 "Byte {masked_candidate} isn't a valid edek type."
-            )))
+            ))),
         }
     }
 }
