@@ -3,6 +3,7 @@ use itertools::Itertools;
 use protobuf::Message;
 
 use crate::{vector_encryption_metadata::VectorEncryptionMetadata, Error};
+use std::fmt::Display;
 
 // This file is for functions which are working with our key id header value.
 // This value has the following structure:
@@ -36,6 +37,16 @@ pub enum PayloadType {
     StandardEdek,
 }
 
+impl Display for PayloadType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PayloadType::DeterministicField => write!(f, "Deterministic Field"),
+            PayloadType::VectorMetadata => write!(f, "Vector Metadata"),
+            PayloadType::StandardEdek => write!(f, "Standard EDEK"),
+        }
+    }
+}
+
 impl PayloadType {
     pub(crate) fn to_numeric_value(self) -> u8 {
         match self {
@@ -63,6 +74,16 @@ pub enum EdekType {
     Standalone,
     SaasShield,
     DataControlPlatform,
+}
+
+impl Display for EdekType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EdekType::Standalone => write!(f, "Standalone"),
+            EdekType::SaasShield => write!(f, "SaaS Shield"),
+            EdekType::DataControlPlatform => write!(f, "Data Control Platform"),
+        }
+    }
 }
 
 impl EdekType {
