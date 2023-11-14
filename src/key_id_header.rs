@@ -110,7 +110,7 @@ impl KeyIdHeader {
     }
 
     /// Write this header onto the front of the document.
-    pub fn put_header_on_document(&self, document: Bytes) -> Bytes {
+    pub fn put_header_on_document<U: IntoIterator<Item = u8>>(&self, document: Bytes) -> Bytes {
         self.write_to_bytes().into_iter().chain(document).collect()
     }
 
