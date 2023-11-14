@@ -108,6 +108,12 @@ impl KeyIdHeader {
             key_id,
         }
     }
+
+    /// Write this header onto the front of the document.
+    pub fn put_header_on_document(&self, document: Bytes) -> Bytes {
+        self.write_to_bytes().into_iter().chain(document).collect()
+    }
+
     /// Write the header to bytes. This is done by writing the key_id to be 4 bytes, putting the edek and payload types into
     /// the next byte and padding with a zero. See the comment at the top of this file for more information.
     pub fn write_to_bytes(&self) -> Bytes {
