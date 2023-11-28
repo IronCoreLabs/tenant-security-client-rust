@@ -1,0 +1,10 @@
+syntax = "proto3";
+package ironcorelabs.proto.vector;
+
+option java_package = "com.ironcorelabs.proto";
+option java_outer_classname = "EncryptedDekProtos";
+
+message VectorEncryptionMetadata {
+    bytes iv = 1;
+    bytes auth_hash = 2;
+}

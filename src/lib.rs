@@ -1,4 +1,5 @@
 pub mod aes;
+pub mod key_id_header;
 mod signing;
 
 use self::icl_header_v4::V4DocumentHeader;
@@ -47,6 +48,15 @@ pub enum Error {
     EncryptError(String),
     /// Decryption of the edoc failed.
     DecryptError(String),
+    // The next errors have to do with the key_id_header
+    /// EdekType was not recognized
+    EdekTypeError(String),
+    /// PayloadType was not recognized
+    PayloadTypeError(String),
+    /// key_id_header to short
+    KeyIdHeaderTooShort(usize),
+    /// key_id_header malformed
+    KeyIdHeaderMalformed(String),
 }
 
 impl Display for Error {
@@ -61,6 +71,10 @@ impl Display for Error {
             Error::HeaderLengthOverflow(x) => write!(f, "HeaderLengthOverflow({x})"),
             Error::EncryptError(x) => write!(f, "EncryptError({x})"),
             Error::DecryptError(x) => write!(f, "DecryptError({x})"),
+            Error::KeyIdHeaderTooShort(x) => write!(f, "KeyIdHeaderTooShort({x})"),
+            Error::EdekTypeError(x) => write!(f, "EdekTypeError({x})"),
+            Error::PayloadTypeError(x) => write!(f, "PayloadTypeError({x})"),
+            Error::KeyIdHeaderMalformed(x) => write!(f, "KeyIdHeaderMalformed({x})"),
         }
     }
 }
