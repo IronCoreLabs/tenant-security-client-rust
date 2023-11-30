@@ -23,29 +23,23 @@ pub struct PlaintextDocument(pub Vec<u8>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncryptionKey(pub [u8; 32]);
 
+/// If `maybe_dek` is None, generate a dek, otherwise use the one provided.
+/// Encrypt the dek using the kek to make an aes edek. The provided id will be put into the Aes256GcmEncryptedDek.
+/// Returns the dek and Aes256GcmEncryptedDek.
 pub fn generate_aes_edek<R: CryptoRng + RngCore>(
     rng: &mut R,
     kek: EncryptionKey,
+    maybe_dek: Option<EncryptionKey>,
     id: &str,
 ) -> Result<(
     EncryptionKey,
     icl_header_v4::v4document_header::edek_wrapper::Aes256GcmEncryptedDek,
 )> {
-    let document_key = {
+    let dek = maybe_dek.unwrap_or_else(|| {
         let mut buffer = [0u8; 32];
         rng.fill_bytes(&mut buffer);
-        buffer
-    };
-    let dek = EncryptionKey(document_key);
-    generate_aes_edek_from_dek(rng, kek, &dek, id).map(|edek| (dek, edek))
-}
-
-pub fn generate_aes_edek_from_dek<R: CryptoRng + RngCore>(
-    rng: &mut R,
-    kek: EncryptionKey,
-    dek: &EncryptionKey,
-    id: &str,
-) -> Result<icl_header_v4::v4document_header::edek_wrapper::Aes256GcmEncryptedDek> {
+        EncryptionKey(buffer)
+    });
     let (iv, edek) = aes_encrypt(kek, &dek.0, &[], rng)?;
     let aes_edek = icl_header_v4::v4document_header::edek_wrapper::Aes256GcmEncryptedDek {
         ciphertext: edek.0.into(),
@@ -53,18 +47,20 @@ pub fn generate_aes_edek_from_dek<R: CryptoRng + RngCore>(
         id: id.into(),
         ..Default::default()
     };
-    Ok(aes_edek)
+    Ok((dek, aes_edek))
 }
 
-/// Generate an aes edek, and encrypt it using the kek. The provided id will be put into the Aes256GcmEdek.
+/// If `maybe_dek` is None, generate a dek, otherwise use the one provided.
+/// Encrypt the dek using the kek to make an aes edek. The provided id will be put into the Aes256GcmEdek.
 /// The edek will be placed into a V4DocumentHeader and the signature will be computed.
-/// The generated aes dek is the key used to compute the signature.
+/// The aes dek is the key used to compute the signature.
 pub fn generate_aes_edek_and_sign<R: CryptoRng + RngCore>(
     rng: &mut R,
     kek: EncryptionKey,
+    maybe_dek: Option<EncryptionKey>,
     id: &str,
 ) -> Result<(EncryptionKey, icl_header_v4::V4DocumentHeader)> {
-    let (aes_dek, aes_edek) = generate_aes_edek(rng, kek, id)?;
+    let (aes_dek, aes_edek) = generate_aes_edek(rng, kek, maybe_dek, id)?;
     Ok((
         aes_dek,
         create_signed_header(
@@ -74,22 +70,6 @@ pub fn generate_aes_edek_and_sign<R: CryptoRng + RngCore>(
             },
             aes_dek,
         ),
-    ))
-}
-
-pub fn generate_aes_edek_and_sign_from_dek<R: CryptoRng + RngCore>(
-    rng: &mut R,
-    kek: EncryptionKey,
-    dek: EncryptionKey,
-    id: &str,
-) -> Result<icl_header_v4::V4DocumentHeader> {
-    let aes_edek = generate_aes_edek_from_dek(rng, kek, &dek, id)?;
-    Ok(create_signed_header(
-        icl_header_v4::v4document_header::EdekWrapper {
-            edek: Some(Edek::Aes256GcmEdek(aes_edek)),
-            ..Default::default()
-        },
-        dek,
     ))
 }
 
@@ -243,7 +223,7 @@ mod test {
             "aabbccddeefaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
         ));
         let id = "hello";
-        let (aes_dek, aes_edek) = generate_aes_edek(&mut rng, kek, id).unwrap();
+        let (aes_dek, aes_edek) = generate_aes_edek(&mut rng, kek, None, id).unwrap();
         let result = decrypt_aes_edek(&kek, &aes_edek).unwrap();
         assert_eq!(result, aes_dek);
     }
@@ -255,7 +235,7 @@ mod test {
             "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
         ));
         let id = "hello";
-        let (aes_dek, v4_document) = generate_aes_edek_and_sign(&mut rng, kek, id).unwrap();
+        let (aes_dek, v4_document) = generate_aes_edek_and_sign(&mut rng, kek, None, id).unwrap();
         let aes_edek =
             v4_document.signed_payload.0.clone().unwrap().edeks[0].take_aes_256_gcm_edek();
         let decrypted_aes_dek = decrypt_aes_edek(&kek, &aes_edek).unwrap();
@@ -271,7 +251,7 @@ mod test {
             "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
         ));
         let id = "hello";
-        let (aes_dek, v4_document) = generate_aes_edek_and_sign(&mut rng, kek, id).unwrap();
+        let (aes_dek, v4_document) = generate_aes_edek_and_sign(&mut rng, kek, None, id).unwrap();
         let aes_edek = v4_document.signed_payload.0.unwrap().edeks[0].take_aes_256_gcm_edek();
         let result = decrypt_aes_edek(&kek, &aes_edek).unwrap();
         assert_eq!(result, aes_dek);
