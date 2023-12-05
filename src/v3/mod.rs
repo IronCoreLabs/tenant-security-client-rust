@@ -1,6 +1,6 @@
 use crate::{
     aes::{self, aes_encrypt_with_iv},
-    icl_header_v3::{v3document_header::Header, V3DocumentHeader},
+    icl_header_v3::V3DocumentHeader,
     signing::AES_KEY_LEN,
 };
 use bytes::Bytes;
@@ -34,10 +34,11 @@ pub fn verify_signature(key: [u8; AES_KEY_LEN], v3_header: &V3DocumentHeader) ->
         true
     } else {
         let maybe_sig = decompose_signature(&v3_header.sig);
-        match (maybe_sig, &v3_header.header) {
-            (Some(sig), Some(Header::SaasShield(header))) => aes_encrypt_with_iv(
+        match maybe_sig {
+            Some(sig) => aes_encrypt_with_iv(
                 aes::EncryptionKey(key),
-                &header
+                &v3_header
+                    .saas_shield()
                     .write_to_bytes()
                     .expect("Writing proto to bytes failed."),
                 sig.iv,
@@ -57,6 +58,7 @@ pub fn verify_signature(key: [u8; AES_KEY_LEN], v3_header: &V3DocumentHeader) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hex_literal::hex;
     use itertools::Itertools;
 
     #[test]
@@ -72,8 +74,42 @@ mod tests {
         .map(|x| x as u8)
         .collect_vec();
         let header = Message::parse_from_bytes(&proto_bytes).unwrap();
-        dbg!(&header);
         assert!(verify_signature(dek, &header))
+    }
+
+    #[test]
+    fn verify_known_bad_sig_in_v3_header() {
+        // {
+        //   "sig": [1, 2, 3],
+        //   "saas_shield": {
+        //     "tenant_id": "tenantId"
+        //   }
+        // }
+        let proto_bytes = hex!("0a030102031a0a0a0874656e616e744964");
+        let dek: [u8; 32] = (0..32).into_iter().collect_vec().try_into().unwrap();
+        let header = Message::parse_from_bytes(&proto_bytes).unwrap();
+        assert!(!verify_signature(dek, &header));
+    }
+
+    #[test]
+    fn verify_empty_v3_header() {
+        let dek: [u8; 32] = (0..32).into_iter().collect_vec().try_into().unwrap();
+        let empty_header = V3DocumentHeader::new();
+        assert!(verify_signature(dek, &empty_header))
+    }
+
+    #[test]
+    fn verify_empty_sig_v3_header() {
+        // {
+        //   "sig": [],
+        //   "saas_shield": {
+        //     "tenant_id": "tenantId"
+        //   }
+        // }
+        let proto_bytes = hex!("0a001a0a0a0874656e616e744964");
+        let dek: [u8; 32] = (0..32).into_iter().collect_vec().try_into().unwrap();
+        let header = Message::parse_from_bytes(&proto_bytes).unwrap();
+        assert!(verify_signature(dek, &header));
     }
 
     #[test]
