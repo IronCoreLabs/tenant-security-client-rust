@@ -9,6 +9,7 @@ fn main() {
             "src/cmk_edek.proto",
             "src/icl_header_v4.proto",
             "src/vector_encryption_metadata.proto",
+            "src/icl_header_v3.proto",
         ])
         .include("src")
         .customize(

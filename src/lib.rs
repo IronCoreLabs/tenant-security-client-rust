@@ -1,6 +1,7 @@
 pub mod aes;
 pub mod key_id_header;
 mod signing;
+pub mod v3;
 
 use self::icl_header_v4::V4DocumentHeader;
 use bytes::{Buf, Bytes};
