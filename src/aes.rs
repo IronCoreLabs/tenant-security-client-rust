@@ -181,7 +181,7 @@ pub(crate) fn aes_encrypt_with_iv(
             },
         )
         .map_err(|e| Error::EncryptError(e.to_string()))?;
-    Ok((iv.into(), EncryptedDocument(encrypted_bytes)))
+    Ok((iv, EncryptedDocument(encrypted_bytes)))
 }
 
 pub(crate) fn aes_decrypt(
