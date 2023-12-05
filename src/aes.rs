@@ -1,16 +1,48 @@
 use super::Error;
 use crate::{
-    create_signed_header,
+    create_signed_proto,
     icl_header_v4::{self, v4document_header::edek_wrapper::Edek},
-    AttachedEncryptedPayload, EncryptedPayload, MAGIC, V0,
 };
 use aes_gcm::{aead::Aead, aead::Payload, AeadCore, Aes256Gcm, KeyInit, Nonce};
 use bytes::Bytes;
 use rand::{CryptoRng, RngCore};
 
 type Result<T> = core::result::Result<T, super::Error>;
-const DETACHED_HEADER_LEN: usize = 5;
-const IV_LEN: usize = 12;
+pub(crate) const IV_LEN: usize = 12;
+
+/// These bytes are the IV + CIPHERTEXT.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncryptedDocumentWithIv(pub Bytes);
+
+impl Default for EncryptedDocumentWithIv {
+    fn default() -> EncryptedDocumentWithIv {
+        EncryptedDocumentWithIv([].as_ref().into())
+    }
+}
+
+impl AsRef<[u8]> for EncryptedDocumentWithIv {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl From<Bytes> for EncryptedDocumentWithIv {
+    fn from(b: Bytes) -> Self {
+        EncryptedDocumentWithIv(b)
+    }
+}
+
+impl From<Vec<u8>> for EncryptedDocumentWithIv {
+    fn from(v: Vec<u8>) -> Self {
+        EncryptedDocumentWithIv(v.into())
+    }
+}
+
+impl From<EncryptedDocumentWithIv> for Bytes {
+    fn from(p: EncryptedDocumentWithIv) -> Self {
+        p.0
+    }
+}
 
 /// Holds bytes of an aes encrypted value
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,7 +95,7 @@ pub fn generate_aes_edek_and_sign<R: CryptoRng + RngCore>(
     let (aes_dek, aes_edek) = generate_aes_edek(rng, kek, maybe_dek, id)?;
     Ok((
         aes_dek,
-        create_signed_header(
+        create_signed_proto(
             icl_header_v4::v4document_header::EdekWrapper {
                 edek: Some(Edek::Aes256GcmEdek(aes_edek)),
                 ..Default::default()
@@ -82,7 +114,7 @@ pub fn decrypt_aes_edek(
     let iv = aes_edek.iv.as_ref().try_into().map_err(|_| {
         Error::DecryptError("IV from the edek was not the correct length.".to_string())
     })?;
-    aes_decrypt(kek, iv, &aes_edek.ciphertext, &[])
+    aes_decrypt_core(kek, iv, &aes_edek.ciphertext, &[])
         .and_then(|dek_bytes| {
             dek_bytes.try_into().map_err(|_| {
                 Error::DecryptError("Decrypted AES DEK was not of the correct size".to_string())
@@ -91,66 +123,27 @@ pub fn decrypt_aes_edek(
         .map(EncryptionKey)
 }
 
-/// Decrypt a V4 detached document. The document should have the expected header
-pub fn decrypt_detached_document(
+/// Decrypt the AES encrypted payload using the key. Note that the IV is on the front of the payload and the tag
+/// is on the end.
+pub(crate) fn aes_decrypt_document_with_attached_iv(
     key: &EncryptionKey,
-    payload: EncryptedPayload,
-) -> Result<PlaintextDocument> {
-    let payload_len = payload.0.len();
-    if payload_len < DETACHED_HEADER_LEN + IV_LEN {
-        Err(Error::EdocTooShort(payload_len))
-    } else {
-        let (header, iv_and_cipher) = payload.0.split_at(DETACHED_HEADER_LEN);
-        if header != [&[V0], &MAGIC[..]].concat() {
-            Err(Error::NoIronCoreMagic)
-        } else {
-            decrypt_attached_document_core(key, iv_and_cipher)
-        }
-    }
-}
-
-pub fn decrypt_attached_document(
-    key: &EncryptionKey,
-    payload: AttachedEncryptedPayload,
-) -> Result<PlaintextDocument> {
-    decrypt_attached_document_core(key, &payload.0)
-}
-
-fn decrypt_attached_document_core(
-    key: &EncryptionKey,
-    attached_encrypted_payload: &[u8],
+    aes_encrypted_payload: &[u8],
 ) -> std::result::Result<PlaintextDocument, Error> {
-    let (iv_slice, ciphertext) = attached_encrypted_payload.split_at(IV_LEN);
+    let (iv_slice, ciphertext) = aes_encrypted_payload.split_at(IV_LEN);
     let iv = iv_slice
         .try_into()
         .expect("IV conversion will always have 12 bytes.");
-    aes_decrypt(key, iv, ciphertext, &[]).map(PlaintextDocument)
+    aes_decrypt_core(key, iv, ciphertext, &[]).map(PlaintextDocument)
 }
 
-/// Encrypt a document to be used as a detached document. This means it will have a header of `0IRON` as the first
-/// 5 bytes.
-pub fn encrypt_detached_document<R: RngCore + CryptoRng>(
+/// Encrypt a document and put the iv on the front of it.
+pub fn aes_encrypt_document_and_attach_iv<R: RngCore + CryptoRng>(
     rng: &mut R,
     key: EncryptionKey,
     document: PlaintextDocument,
-) -> Result<EncryptedPayload> {
+) -> Result<EncryptedDocumentWithIv> {
     let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
-    let payload = EncryptedPayload(
-        [&[V0], &MAGIC[..], &iv[..], &enc_data.0[..]]
-            .concat()
-            .into(),
-    );
-    Ok(payload)
-}
-
-/// Encrypt a document to be used as an attached document.
-pub fn encrypt_attached_document<R: RngCore + CryptoRng>(
-    rng: &mut R,
-    key: EncryptionKey,
-    document: PlaintextDocument,
-) -> Result<AttachedEncryptedPayload> {
-    let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
-    Ok(AttachedEncryptedPayload(
+    Ok(EncryptedDocumentWithIv(
         [&iv[..], &enc_data.0[..]].concat().into(),
     ))
 }
@@ -184,7 +177,7 @@ pub(crate) fn aes_encrypt_with_iv(
     Ok((iv, EncryptedDocument(encrypted_bytes)))
 }
 
-pub(crate) fn aes_decrypt(
+pub(crate) fn aes_decrypt_core(
     key: &EncryptionKey,
     iv: [u8; 12],
     ciphertext: &[u8],
@@ -221,7 +214,7 @@ mod test {
         let plaintext = hex!("112233445566778899aabbccddee");
         let (iv, encrypt_result) =
             aes_encrypt(key, &plaintext, &[], &mut rand::thread_rng()).unwrap();
-        let decrypt_result = aes_decrypt(&key, iv, &encrypt_result.0, &[]).unwrap();
+        let decrypt_result = aes_decrypt_core(&key, iv, &encrypt_result.0, &[]).unwrap();
         assert_eq!(decrypt_result, plaintext);
     }
 
@@ -249,7 +242,7 @@ mod test {
             v4_document.signed_payload.0.clone().unwrap().edeks[0].take_aes_256_gcm_edek();
         let decrypted_aes_dek = decrypt_aes_edek(&kek, &aes_edek).unwrap();
         assert_eq!(decrypted_aes_dek, aes_dek);
-        let verify_result = verify_signature(decrypted_aes_dek.0, &v4_document);
+        let verify_result = verify_signature(decrypted_aes_dek, &v4_document);
         assert!(verify_result)
     }
 
@@ -279,47 +272,9 @@ mod test {
             v4_document.signed_payload.0.clone().unwrap().edeks[0].take_aes_256_gcm_edek();
         assert_eq!(aes_edek.id.to_string().as_str(), id);
         let decrypted_aes_dek = decrypt_aes_edek(&kek, &aes_edek).unwrap();
-        let verify_result = verify_signature(decrypted_aes_dek.0, &v4_document);
+        let verify_result = verify_signature(decrypted_aes_dek, &v4_document);
         // Verify fails because I messed the signature up in the proto_bytes
         assert!(!verify_result)
-    }
-
-    #[test]
-    fn encrypt_decrypt_detached_document_roundtrips() {
-        let mut rng = ChaCha20Rng::seed_from_u64(172u64);
-        let key = EncryptionKey(hex!(
-            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
-        ));
-        let plaintext = PlaintextDocument(vec![100u8, 200u8]);
-        let encrypted = encrypt_detached_document(&mut rng, key, plaintext.clone()).unwrap();
-        let result = decrypt_detached_document(&key, encrypted).unwrap();
-        assert_eq!(result, plaintext);
-    }
-
-    #[test]
-    fn decrypt_fails_no_magic() {
-        let key = EncryptionKey(hex!(
-            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
-        ));
-        let encrypted = EncryptedPayload(
-            hex!("fa51152873435062df7e60039d744b248f2e0776d071450f3c879a5895b7")
-                .to_vec()
-                .into(),
-        );
-
-        let result = decrypt_detached_document(&key, encrypted).unwrap_err();
-        assert_eq!(result, Error::NoIronCoreMagic);
-    }
-
-    #[test]
-    fn decrypt_fails_too_short() {
-        let key = EncryptionKey(hex!(
-            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
-        ));
-        let encrypted = EncryptedPayload(hex!("0049524f4efa51").to_vec().into());
-
-        let result = decrypt_detached_document(&key, encrypted).unwrap_err();
-        assert_eq!(result, Error::EdocTooShort(7));
     }
 
     #[test]
@@ -330,8 +285,9 @@ mod test {
         ));
         let document = vec![1u8];
         let encrypted =
-            encrypt_attached_document(&mut rng, key, PlaintextDocument(document.clone())).unwrap();
-        let result = decrypt_attached_document(&key, encrypted).unwrap();
+            aes_encrypt_document_and_attach_iv(&mut rng, key, PlaintextDocument(document.clone()))
+                .unwrap();
+        let result = aes_decrypt_document_with_attached_iv(&key, encrypted.as_ref()).unwrap();
         assert_eq!(result.0, document);
     }
 }
