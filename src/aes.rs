@@ -116,7 +116,7 @@ pub fn decrypt_attached_document(
     decrypt_attached_document_core(key, &payload.0)
 }
 
-fn decrypt_attached_document_core(
+pub(crate) fn decrypt_attached_document_core(
     key: &EncryptionKey,
     attached_encrypted_payload: &[u8],
 ) -> std::result::Result<PlaintextDocument, Error> {

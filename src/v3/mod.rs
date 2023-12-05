@@ -1,10 +1,9 @@
-use crate::{
-    aes::{self, aes_encrypt_with_iv},
-    icl_header_v3::V3DocumentHeader,
-    signing::AES_KEY_LEN,
-};
+use crate::{aes::aes_encrypt_with_iv, icl_header_v3::V3DocumentHeader, signing::AES_KEY_LEN};
+pub use aes::decrypt_detached_document;
 use bytes::Bytes;
 use protobuf::Message;
+
+mod aes;
 
 const IV_LEN: usize = 12;
 const GCM_TAG_LEN: usize = 16;
@@ -36,7 +35,7 @@ pub fn verify_signature(key: [u8; AES_KEY_LEN], v3_header: &V3DocumentHeader) ->
         let maybe_sig = decompose_signature(&v3_header.sig);
         match maybe_sig {
             Some(sig) => aes_encrypt_with_iv(
-                aes::EncryptionKey(key),
+                crate::aes::EncryptionKey(key),
                 &v3_header
                     .saas_shield()
                     .write_to_bytes()
