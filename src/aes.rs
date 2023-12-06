@@ -125,7 +125,7 @@ pub fn decrypt_aes_edek(
 
 /// Decrypt the AES encrypted payload using the key. Note that the IV is on the front of the payload and the tag
 /// is on the end.
-pub(crate) fn aes_decrypt_document_with_attached_iv(
+pub fn aes_decrypt_document_with_attached_iv(
     key: &EncryptionKey,
     aes_encrypted_payload: &[u8],
 ) -> std::result::Result<PlaintextDocument, Error> {
