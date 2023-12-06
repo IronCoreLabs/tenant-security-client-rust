@@ -12,34 +12,34 @@ pub(crate) const IV_LEN: usize = 12;
 
 /// These bytes are the IV + CIPHERTEXT.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncryptedDocumentWithIv(pub Bytes);
+pub struct IvAndCiphertext(pub Bytes);
 
-impl Default for EncryptedDocumentWithIv {
-    fn default() -> EncryptedDocumentWithIv {
-        EncryptedDocumentWithIv([].as_ref().into())
+impl Default for IvAndCiphertext {
+    fn default() -> IvAndCiphertext {
+        IvAndCiphertext([].as_ref().into())
     }
 }
 
-impl AsRef<[u8]> for EncryptedDocumentWithIv {
+impl AsRef<[u8]> for IvAndCiphertext {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl From<Bytes> for EncryptedDocumentWithIv {
+impl From<Bytes> for IvAndCiphertext {
     fn from(b: Bytes) -> Self {
-        EncryptedDocumentWithIv(b)
+        IvAndCiphertext(b)
     }
 }
 
-impl From<Vec<u8>> for EncryptedDocumentWithIv {
+impl From<Vec<u8>> for IvAndCiphertext {
     fn from(v: Vec<u8>) -> Self {
-        EncryptedDocumentWithIv(v.into())
+        IvAndCiphertext(v.into())
     }
 }
 
-impl From<EncryptedDocumentWithIv> for Bytes {
-    fn from(p: EncryptedDocumentWithIv) -> Self {
+impl From<IvAndCiphertext> for Bytes {
+    fn from(p: IvAndCiphertext) -> Self {
         p.0
     }
 }
@@ -141,11 +141,9 @@ pub fn aes_encrypt_document_and_attach_iv<R: RngCore + CryptoRng>(
     rng: &mut R,
     key: EncryptionKey,
     document: PlaintextDocument,
-) -> Result<EncryptedDocumentWithIv> {
+) -> Result<IvAndCiphertext> {
     let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
-    Ok(EncryptedDocumentWithIv(
-        [&iv[..], &enc_data.0[..]].concat().into(),
-    ))
+    Ok(IvAndCiphertext([&iv[..], &enc_data.0[..]].concat().into()))
 }
 
 pub(crate) fn aes_encrypt<R: RngCore + CryptoRng>(

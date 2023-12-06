@@ -1,10 +1,10 @@
 use crate::{
-    aes::{aes_encrypt, EncryptedDocumentWithIv, EncryptionKey, PlaintextDocument},
+    aes::{aes_encrypt, EncryptionKey, IvAndCiphertext, PlaintextDocument},
     icl_header_v4::V4DocumentHeader,
     key_id_header::{self, KeyIdHeader},
     Error,
 };
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use rand::{CryptoRng, RngCore};
 
 // The V5 data format is defined by 2 data formats. One for the edek and one for encrypted data encrypted with that edek.
@@ -18,54 +18,59 @@ pub(crate) const V0: u8 = 0u8;
 pub(crate) const DETACHED_HEADER_LEN: usize = 5;
 
 /// These are detached encrypted bytes, which means they have a `0IRON` + IV + CIPHERTEXT.
+/// This value is correct by construction and will be validated when we create it.
+/// There is no public constructor, only the TryFrom implementations.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncryptedPayload(pub Bytes);
+pub struct EncryptedPayload(IvAndCiphertext);
 
 impl Default for EncryptedPayload {
     fn default() -> EncryptedPayload {
-        EncryptedPayload(Bytes::new())
+        EncryptedPayload(Bytes::new().into())
     }
 }
 
-impl From<Bytes> for EncryptedPayload {
-    fn from(b: Bytes) -> Self {
-        EncryptedPayload(b)
+impl TryFrom<Bytes> for EncryptedPayload {
+    type Error = Error;
+
+    fn try_from(mut value: Bytes) -> core::result::Result<Self, Self::Error> {
+        if value.len() < DETACHED_HEADER_LEN {
+            Err(Error::EdocTooShort(value.len()))
+        } else {
+            if value.get_u8() == V0 {
+                let maybe_magic = value.split_to(MAGIC.len());
+                if maybe_magic.as_ref() == MAGIC {
+                    Ok(EncryptedPayload(value.into()))
+                } else {
+                    Err(Error::NoIronCoreMagic)
+                }
+            } else {
+                Err(Error::HeaderParseErr(
+                    "`0IRON` magic expected on the encrypted document.".to_string(),
+                ))
+            }
+        }
     }
 }
 
-impl From<Vec<u8>> for EncryptedPayload {
-    fn from(v: Vec<u8>) -> Self {
-        EncryptedPayload(v.into())
-    }
-}
-
-impl From<EncryptedPayload> for Bytes {
-    fn from(p: EncryptedPayload) -> Self {
-        p.0
+impl TryFrom<Vec<u8>> for EncryptedPayload {
+    type Error = Error;
+    fn try_from(value: Vec<u8>) -> core::result::Result<Self, Self::Error> {
+        Bytes::from(value).try_into()
     }
 }
 
 impl EncryptedPayload {
-    pub fn to_aes_value_with_attached_iv(self) -> Result<EncryptedDocumentWithIv> {
-        let payload_len = self.0.len();
-        let mut payload_bytes = self.0;
-        if payload_len < DETACHED_HEADER_LEN + crate::aes::IV_LEN {
-            Err(Error::EdocTooShort(payload_len))
-        } else {
-            // Now payload_bytes is the header and iv_and_cipher is the rest.
-            let iv_and_cipher = payload_bytes.split_off(DETACHED_HEADER_LEN);
-            if payload_bytes != Bytes::from([&[V0], &MAGIC[..]].concat()) {
-                Err(Error::NoIronCoreMagic)
-            } else {
-                Ok(EncryptedDocumentWithIv(iv_and_cipher))
-            }
-        }
+    /// Convert the encrypted payload to t
+    pub fn to_aes_value_with_attached_iv(self) -> IvAndCiphertext {
+        self.0
     }
 
     /// Decrypt a V5 detached document. The document should have the expected header
-    pub fn to_plaintext_value(self, key: &EncryptionKey) -> Result<PlaintextDocument> {
-        let aes_encrypted_value = self.to_aes_value_with_attached_iv()?;
-        crate::aes::aes_decrypt_document_with_attached_iv(key, aes_encrypted_value.as_ref())
+    pub fn decrypt(self, key: &EncryptionKey) -> Result<PlaintextDocument> {
+        crate::aes::aes_decrypt_document_with_attached_iv(
+            key,
+            self.to_aes_value_with_attached_iv().as_ref(),
+        )
     }
 }
 
@@ -77,12 +82,9 @@ pub fn encrypt_detached_document<R: RngCore + CryptoRng>(
     document: PlaintextDocument,
 ) -> Result<EncryptedPayload> {
     let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
-    let payload = EncryptedPayload(
-        [&[V0], &MAGIC[..], &iv[..], &enc_data.0[..]]
-            .concat()
-            .into(),
-    );
-    Ok(payload)
+    [&[V0], &MAGIC[..], &iv[..], &enc_data.0[..]]
+        .concat()
+        .try_into()
 }
 
 pub fn parse_standard_edek(edek_bytes: Bytes) -> Result<(KeyIdHeader, V4DocumentHeader)> {
@@ -92,8 +94,9 @@ pub fn parse_standard_edek(edek_bytes: Bytes) -> Result<(KeyIdHeader, V4Document
     Ok((key_id_header, pb))
 }
 
-pub fn parse_standard_edoc(edoc: Bytes) -> Result<EncryptedDocumentWithIv> {
-    EncryptedPayload(edoc).to_aes_value_with_attached_iv()
+pub fn parse_standard_edoc(edoc: Bytes) -> Result<IvAndCiphertext> {
+    let encrypted_payload: EncryptedPayload = edoc.try_into()?;
+    Ok(encrypted_payload.to_aes_value_with_attached_iv())
 }
 
 #[cfg(test)]
@@ -110,33 +113,34 @@ mod test {
         ));
         let plaintext = PlaintextDocument(vec![100u8, 200u8]);
         let encrypted = encrypt_detached_document(&mut rng, key, plaintext.clone()).unwrap();
-        let result = encrypted.to_plaintext_value(&key).unwrap();
+        let result = encrypted.decrypt(&key).unwrap();
         assert_eq!(result, plaintext);
     }
 
     #[test]
-    fn decrypt_fails_no_magic() {
-        let key = EncryptionKey(hex!(
-            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
-        ));
-        let encrypted = EncryptedPayload(
-            hex!("fa51152873435062df7e60039d744b248f2e0776d071450f3c879a5895b7")
-                .to_vec()
-                .into(),
-        );
+    fn creation_fails_too_short() {
+        let encrypted_payload_or_error: Result<EncryptedPayload> =
+            hex!("00495241").to_vec().try_into();
 
-        let result = encrypted.to_plaintext_value(&key).unwrap_err();
-        assert_eq!(result, Error::NoIronCoreMagic);
+        let result = encrypted_payload_or_error.unwrap_err();
+        assert_eq!(result, Error::EdocTooShort(4));
     }
 
     #[test]
-    fn decrypt_fails_too_short() {
-        let key = EncryptionKey(hex!(
-            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
-        ));
-        let encrypted = EncryptedPayload(hex!("0049524f4efa51").to_vec().into());
+    fn creation_fails_wrong_bytes() {
+        // Wrong first byte.
+        let encrypted_payload_or_error: Result<EncryptedPayload> =
+            hex!("0149524f4efa5111111111").to_vec().try_into();
+        let result = encrypted_payload_or_error.unwrap_err();
+        assert_eq!(
+            result,
+            Error::HeaderParseErr("`0IRON` magic expected on the encrypted document.".to_string())
+        );
 
-        let result = encrypted.to_plaintext_value(&key).unwrap_err();
-        assert_eq!(result, Error::EdocTooShort(7));
+        // right first byte, but IRON magic wrong.
+        let encrypted_payload_or_error: Result<EncryptedPayload> =
+            hex!("0000524f4efa5111111111").to_vec().try_into();
+        let result = encrypted_payload_or_error.unwrap_err();
+        assert_eq!(result, Error::NoIronCoreMagic);
     }
 }
