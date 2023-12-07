@@ -1,11 +1,11 @@
 use crate::{
-    aes::aes_encrypt_with_iv, icl_header_v3::V3DocumentHeader, signing::AES_KEY_LEN, Error, MAGIC,
+    aes::{aes_encrypt_with_iv, decrypt_attached_document_core, EncryptionKey, PlaintextDocument},
+    icl_header_v3::V3DocumentHeader,
+    signing::AES_KEY_LEN,
+    Error, MAGIC,
 };
-pub use aes::decrypt_detached_document;
 use bytes::Bytes;
 use protobuf::Message;
-
-mod aes;
 
 const IV_LEN: usize = 12;
 const GCM_TAG_LEN: usize = 16;
@@ -60,6 +60,19 @@ impl TryFrom<Vec<u8>> for EncryptedPayload {
             v3_document_header,
             iv_and_ciphertext: iv_and_cipher.to_vec(),
         })
+    }
+}
+
+impl EncryptedPayload {
+    /// Decrypt a V3 detached document and verify its signature.
+    pub fn decrypt(self, key: &EncryptionKey) -> Result<PlaintextDocument, Error> {
+        if verify_signature(key.0, &self.v3_document_header) {
+            decrypt_attached_document_core(key, &self.iv_and_ciphertext)
+        } else {
+            Err(Error::DecryptError(
+                "Signature validation failed.".to_string(),
+            ))
+        }
     }
 }
 
@@ -188,14 +201,14 @@ mod tests {
     }
 
     #[test]
-    fn decrypt_too_short() {
+    fn encrypted_payload_too_short() {
         let document = vec![3, 73, 82, 79, 78, 0];
         let err = EncryptedPayload::try_from(document);
         assert!(matches!(err, Err(Error::EdocTooShort(_))))
     }
 
     #[test]
-    fn decrypt_invalid_header_len() {
+    fn encrypted_payload_invalid_header_len() {
         let document = vec![
             3, 73, 82, 79, 78, 0, 100, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
         ];
@@ -204,14 +217,14 @@ mod tests {
     }
 
     #[test]
-    fn decrypt_no_magic() {
+    fn encrypted_payload_no_magic() {
         let document = vec![1, 73, 82, 79, 78, 0, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
         let err = EncryptedPayload::try_from(document);
         assert!(matches!(err, Err(Error::NoIronCoreMagic)))
     }
 
     #[test]
-    fn decrypt_good_document() {
+    fn form_good_encrypted_payload() {
         let document = vec![
             3, 73, 82, 79, 78, 0, 42, 10, 28, 20, 31, 98, 61, 23, 74, 221, 61, 102, 44, 153, 142,
             172, 70, 145, 180, 36, 193, 133, 249, 72, 1, 181, 31, 205, 205, 1, 197, 26, 10, 10, 8,
@@ -222,5 +235,37 @@ mod tests {
         ];
         let payload = EncryptedPayload::try_from(document);
         assert!(payload.is_ok());
+    }
+
+    #[test]
+    fn decrypt_good_document() {
+        let dek = EncryptionKey((0..32).collect_vec().try_into().unwrap());
+        let document = vec![
+            3, 73, 82, 79, 78, 0, 42, 10, 28, 20, 31, 98, 61, 23, 74, 221, 61, 102, 44, 153, 142,
+            172, 70, 145, 180, 36, 193, 133, 249, 72, 1, 181, 31, 205, 205, 1, 197, 26, 10, 10, 8,
+            116, 101, 110, 97, 110, 116, 73, 100, 49, 113, 239, 60, 137, 159, 135, 94, 89, 92, 34,
+            19, 231, 165, 112, 184, 171, 237, 133, 20, 97, 193, 60, 0, 85, 139, 184, 144, 44, 184,
+            129, 210, 203, 21, 167, 53, 17, 51, 49, 42, 92, 207, 102, 98, 174, 198, 128, 199, 19,
+            42, 145, 251, 86, 201, 214, 33, 117, 232, 18, 93,
+        ];
+        let payload = EncryptedPayload::try_from(document).unwrap();
+        let decrypted = payload.decrypt(&dek).unwrap();
+        assert_eq!(decrypted.0, (0..32).collect_vec());
+    }
+
+    #[test]
+    fn decrypt_bad_signature_document() {
+        let dek = EncryptionKey((0..32).collect_vec().try_into().unwrap());
+        let document = vec![
+            3, 73, 82, 79, 78, 0, 42, 10, 28, 20, 32, 98, 61, 23, 74, 221, 61, 102, 44, 153, 142,
+            172, 70, 145, 180, 36, 193, 133, 249, 72, 1, 181, 31, 205, 205, 1, 197, 26, 10, 10, 8,
+            116, 101, 110, 97, 110, 116, 73, 100, 49, 113, 239, 60, 137, 159, 135, 94, 89, 92, 34,
+            19, 231, 165, 112, 184, 171, 237, 133, 20, 97, 193, 60, 0, 85, 139, 184, 144, 44, 184,
+            129, 210, 203, 21, 167, 53, 17, 51, 49, 42, 92, 207, 102, 98, 174, 198, 128, 199, 19,
+            42, 145, 251, 86, 201, 214, 33, 117, 232, 18, 93,
+        ];
+        let payload = EncryptedPayload::try_from(document).unwrap();
+        let err = payload.decrypt(&dek).unwrap_err();
+        assert!(matches!(err, Error::DecryptError(_)));
     }
 }
