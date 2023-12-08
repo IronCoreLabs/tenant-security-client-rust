@@ -164,11 +164,11 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, AttachedEncryptedPa
 }
 
 pub fn create_signed_header(
-    edek_wrapper: icl_header_v4::v4document_header::EdekWrapper,
+    edek_wrappers: Vec<icl_header_v4::v4document_header::EdekWrapper>,
     signing_key: aes::EncryptionKey,
 ) -> V4DocumentHeader {
     let signed_payload = icl_header_v4::v4document_header::SignedPayload {
-        edeks: vec![edek_wrapper],
+        edeks: edek_wrappers,
         ..Default::default()
     };
     let signature_info = sign_header(signing_key.0, &signed_payload);

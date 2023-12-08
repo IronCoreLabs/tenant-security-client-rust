@@ -64,10 +64,10 @@ pub fn generate_aes_edek_and_sign<R: CryptoRng + RngCore>(
     Ok((
         aes_dek,
         create_signed_header(
-            icl_header_v4::v4document_header::EdekWrapper {
+            vec![icl_header_v4::v4document_header::EdekWrapper {
                 edek: Some(Edek::Aes256GcmEdek(aes_edek)),
                 ..Default::default()
-            },
+            }],
             aes_dek,
         ),
     ))
