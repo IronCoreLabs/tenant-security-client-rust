@@ -21,7 +21,7 @@ pub(crate) const DETACHED_HEADER_LEN: usize = 5;
 /// This value is correct by construction and will be validated when we create it.
 /// There is no public constructor, only the TryFrom implementations.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncryptedPayload(IvAndCiphertext);
+pub struct EncryptedPayload(pub IvAndCiphertext);
 
 impl Default for EncryptedPayload {
     fn default() -> EncryptedPayload {
