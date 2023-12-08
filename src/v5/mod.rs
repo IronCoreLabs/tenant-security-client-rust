@@ -1,12 +1,13 @@
 // Reexport the v4 aes, because we also use it for v5.
 pub use crate::v4::aes;
+pub mod key_id_header;
 use crate::{
     aes::{aes_encrypt, EncryptionKey, IvAndCiphertext, PlaintextDocument},
     icl_header_v4::V4DocumentHeader,
-    key_id_header::{self, KeyIdHeader},
     Error,
 };
 use bytes::{Buf, Bytes};
+use key_id_header::KeyIdHeader;
 use rand::{CryptoRng, RngCore};
 
 // The V5 data format is defined by 2 data formats. One for the edek and one for encrypted data encrypted with that edek.

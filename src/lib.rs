@@ -1,5 +1,4 @@
 pub mod aes;
-pub mod key_id_header;
 mod signing;
 pub mod v3;
 pub mod v4;
