@@ -14,6 +14,12 @@ pub(crate) const IV_LEN: usize = 12;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IvAndCiphertext(pub Bytes);
 
+impl IvAndCiphertext {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 impl Default for IvAndCiphertext {
     fn default() -> IvAndCiphertext {
         IvAndCiphertext([].as_ref().into())
@@ -96,10 +102,10 @@ pub fn generate_aes_edek_and_sign<R: CryptoRng + RngCore>(
     Ok((
         aes_dek,
         create_signed_proto(
-            icl_header_v4::v4document_header::EdekWrapper {
+            vec![icl_header_v4::v4document_header::EdekWrapper {
                 edek: Some(Edek::Aes256GcmEdek(aes_edek)),
                 ..Default::default()
-            },
+            }],
             aes_dek,
         ),
     ))
@@ -125,7 +131,7 @@ pub fn decrypt_aes_edek(
 
 /// Decrypt the AES encrypted payload using the key. Note that the IV is on the front of the payload and the tag
 /// is on the end.
-pub fn aes_decrypt_document_with_attached_iv(
+pub fn decrypt_document_with_attached_iv(
     key: &EncryptionKey,
     aes_encrypted_payload: &[u8],
 ) -> std::result::Result<PlaintextDocument, Error> {
@@ -137,7 +143,7 @@ pub fn aes_decrypt_document_with_attached_iv(
 }
 
 /// Encrypt a document and put the iv on the front of it.
-pub fn aes_encrypt_document_and_attach_iv<R: RngCore + CryptoRng>(
+pub fn encrypt_document_and_attach_iv<R: RngCore + CryptoRng>(
     rng: &mut R,
     key: EncryptionKey,
     document: PlaintextDocument,
@@ -283,9 +289,9 @@ mod test {
         ));
         let document = vec![1u8];
         let encrypted =
-            aes_encrypt_document_and_attach_iv(&mut rng, key, PlaintextDocument(document.clone()))
+            encrypt_document_and_attach_iv(&mut rng, key, PlaintextDocument(document.clone()))
                 .unwrap();
-        let result = aes_decrypt_document_with_attached_iv(&key, encrypted.as_ref()).unwrap();
+        let result = decrypt_document_with_attached_iv(&key, encrypted.as_ref()).unwrap();
         assert_eq!(result.0, document);
     }
 }

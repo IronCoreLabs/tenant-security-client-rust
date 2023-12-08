@@ -68,11 +68,11 @@ impl Display for Error {
 
 /// Creates a signed proto wrapper with a single edek wrapper in it using the signing key to do the signing.
 pub fn create_signed_proto(
-    edek_wrapper: icl_header_v4::v4document_header::EdekWrapper,
+    edek_wrappers: Vec<icl_header_v4::v4document_header::EdekWrapper>,
     signing_key: aes::EncryptionKey,
 ) -> V4DocumentHeader {
     let signed_payload = icl_header_v4::v4document_header::SignedPayload {
-        edeks: vec![edek_wrapper],
+        edeks: edek_wrappers,
         ..Default::default()
     };
     let signature_info = sign_header(signing_key, &signed_payload);

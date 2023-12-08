@@ -67,10 +67,18 @@ impl EncryptedPayload {
 
     /// Decrypt a V5 detached document. The document should have the expected header
     pub fn decrypt(self, key: &EncryptionKey) -> Result<PlaintextDocument> {
-        crate::aes::aes_decrypt_document_with_attached_iv(
+        crate::aes::decrypt_document_with_attached_iv(
             key,
             self.to_aes_value_with_attached_iv().as_ref(),
         )
+    }
+
+    pub fn write_to_bytes(&self) -> Vec<u8> {
+        let mut result = Vec::with_capacity(self.0.len() + DETACHED_HEADER_LEN);
+        result.push(V0);
+        result.extend_from_slice(MAGIC);
+        result.extend_from_slice(self.0.as_ref());
+        result
     }
 }
 
