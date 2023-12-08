@@ -38,19 +38,17 @@ impl TryFrom<Bytes> for EncryptedPayload {
     fn try_from(mut value: Bytes) -> core::result::Result<Self, Self::Error> {
         if value.len() < DETACHED_HEADER_LEN {
             Err(Error::EdocTooShort(value.len()))
-        } else {
-            if value.get_u8() == V0 {
-                let maybe_magic = value.split_to(MAGIC.len());
-                if maybe_magic.as_ref() == MAGIC {
-                    Ok(EncryptedPayload(value.into()))
-                } else {
-                    Err(Error::NoIronCoreMagic)
-                }
+        } else if value.get_u8() == V0 {
+            let maybe_magic = value.split_to(MAGIC.len());
+            if maybe_magic.as_ref() == MAGIC {
+                Ok(EncryptedPayload(value.into()))
             } else {
-                Err(Error::HeaderParseErr(
-                    "`0IRON` magic expected on the encrypted document.".to_string(),
-                ))
+                Err(Error::NoIronCoreMagic)
             }
+        } else {
+            Err(Error::HeaderParseErr(
+                "`0IRON` magic expected on the encrypted document.".to_string(),
+            ))
         }
     }
 }
