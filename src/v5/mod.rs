@@ -1,3 +1,5 @@
+// Reexport the v4 aes, because we also use it for v5.
+pub use crate::v4::aes;
 use crate::{
     aes::{aes_encrypt, EncryptionKey, IvAndCiphertext, PlaintextDocument},
     icl_header_v4::V4DocumentHeader,

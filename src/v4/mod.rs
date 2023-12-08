@@ -1,6 +1,7 @@
+pub mod aes;
 pub mod attached;
 
-// IronCore EDOC format, quick spec:
+// IronCore V4 EDOC format, quick spec:
 //
 // -- PRE HEADER (7 bytes) --
 // 4                (1 byte)
@@ -8,7 +9,7 @@ pub mod attached;
 // Length of header (2 bytes, BE)
 // -- HEADER (proto) --
 // -- [optional] DATA --
-// The `EncryptedDocumentWithIv` struct is the DATA mentioned in this format
+// The `IvAndCiphertext` struct is the DATA mentioned in this format
 
 pub(crate) const PRE_HEADER_LEN: usize = 7;
 pub(crate) const MAGIC: &[u8; 4] = b"IRON";
