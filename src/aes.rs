@@ -23,7 +23,7 @@ impl IvAndCiphertext {
 
 impl Default for IvAndCiphertext {
     fn default() -> IvAndCiphertext {
-        IvAndCiphertext([].as_ref().into())
+        IvAndCiphertext(Bytes::new())
     }
 }
 
