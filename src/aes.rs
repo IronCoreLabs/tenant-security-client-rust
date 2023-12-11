@@ -62,13 +62,12 @@ pub struct PlaintextDocument(pub Vec<u8>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncryptionKey(pub [u8; 32]);
 
-/// Decrypt the AES encrypted payload using the key. Note that the IV is on the front of the payload and the tag
-/// is on the end.
+/// Decrypt the AES encrypted payload using the key. Note that the IV is on the front of the payload.
 pub fn decrypt_document_with_attached_iv(
     key: &EncryptionKey,
-    aes_encrypted_payload: &[u8],
+    aes_encrypted_payload: &IvAndCiphertext,
 ) -> Result<PlaintextDocument> {
-    let (iv_slice, ciphertext) = aes_encrypted_payload.split_at(IV_LEN);
+    let (iv_slice, ciphertext) = aes_encrypted_payload.0.split_at(IV_LEN);
     let iv = iv_slice
         .try_into()
         .expect("IV conversion will always have 12 bytes.");
@@ -162,7 +161,7 @@ mod test {
         let encrypted =
             encrypt_document_and_attach_iv(&mut rng, key, PlaintextDocument(document.clone()))
                 .unwrap();
-        let result = decrypt_document_with_attached_iv(&key, encrypted.as_ref()).unwrap();
+        let result = decrypt_document_with_attached_iv(&key, &encrypted).unwrap();
         assert_eq!(result.0, document);
     }
 }

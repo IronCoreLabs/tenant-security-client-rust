@@ -71,7 +71,7 @@ impl EncryptedPayload {
     /// Decrypt a V3 detached document and verify its signature.
     pub fn decrypt(self, key: &EncryptionKey) -> Result<PlaintextDocument, Error> {
         if verify_signature(key.0, &self.v3_document_header) {
-            decrypt_document_with_attached_iv(key, &self.iv_and_ciphertext.0)
+            decrypt_document_with_attached_iv(key, &self.iv_and_ciphertext)
         } else {
             Err(Error::DecryptError(
                 "Signature validation failed.".to_string(),

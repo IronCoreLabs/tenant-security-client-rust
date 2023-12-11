@@ -24,7 +24,7 @@ pub(crate) const DETACHED_HEADER_LEN: usize = 5;
 /// This value is correct by construction and will be validated when we create it.
 /// There is no public constructor, only the TryFrom implementations.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncryptedPayload(pub IvAndCiphertext);
+pub struct EncryptedPayload(IvAndCiphertext);
 
 impl Default for EncryptedPayload {
     fn default() -> EncryptedPayload {
@@ -60,6 +60,12 @@ impl TryFrom<Vec<u8>> for EncryptedPayload {
     }
 }
 
+impl From<IvAndCiphertext> for EncryptedPayload {
+    fn from(value: IvAndCiphertext) -> Self {
+        EncryptedPayload(value)
+    }
+}
+
 impl EncryptedPayload {
     /// Convert the encrypted payload to t
     pub fn to_aes_value_with_attached_iv(self) -> IvAndCiphertext {
@@ -68,10 +74,7 @@ impl EncryptedPayload {
 
     /// Decrypt a V5 detached document. The document should have the expected header
     pub fn decrypt(self, key: &EncryptionKey) -> Result<PlaintextDocument> {
-        crate::aes::decrypt_document_with_attached_iv(
-            key,
-            self.to_aes_value_with_attached_iv().as_ref(),
-        )
+        crate::aes::decrypt_document_with_attached_iv(key, &self.to_aes_value_with_attached_iv())
     }
 
     pub fn write_to_bytes(&self) -> Vec<u8> {
@@ -91,9 +94,9 @@ pub fn encrypt_detached_document<R: RngCore + CryptoRng>(
     document: PlaintextDocument,
 ) -> Result<EncryptedPayload> {
     let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
-    [&[V0], &MAGIC[..], &iv[..], &enc_data.0[..]]
-        .concat()
-        .try_into()
+    Ok(EncryptedPayload(IvAndCiphertext(
+        iv.into_iter().chain(enc_data.0.into_iter()).collect(),
+    )))
 }
 
 pub fn parse_standard_edek(edek_bytes: Bytes) -> Result<(KeyIdHeader, V4DocumentHeader)> {
