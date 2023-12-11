@@ -1,4 +1,4 @@
-// This module is dedicated with things to do with oes encryption/decryption.
+// This module is dedicated with things to do with aes encryption/decryption.
 use super::Error;
 use aes_gcm::{aead::Aead, aead::Payload, AeadCore, Aes256Gcm, KeyInit, Nonce};
 use bytes::Bytes;
