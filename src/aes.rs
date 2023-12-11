@@ -67,7 +67,7 @@ pub struct EncryptionKey(pub [u8; 32]);
 pub fn decrypt_document_with_attached_iv(
     key: &EncryptionKey,
     aes_encrypted_payload: &[u8],
-) -> std::result::Result<PlaintextDocument, Error> {
+) -> Result<PlaintextDocument> {
     let (iv_slice, ciphertext) = aes_encrypted_payload.split_at(IV_LEN);
     let iv = iv_slice
         .try_into()

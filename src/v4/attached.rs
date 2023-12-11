@@ -20,8 +20,8 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, IvAndCiphertext)> {
             let header_size = b.get_u16().into();
             if b.len() >= header_size {
                 //Break off the bytes after `header_size` and leave the header in `b`.
-                let rest = b.split_off(header_size);
-                Ok((b, IvAndCiphertext(rest)))
+                let header = b.split_to(header_size);
+                Ok((header, IvAndCiphertext(b)))
             } else {
                 Err(Error::SpecifiedLengthTooLong(header_size as u32))
             }

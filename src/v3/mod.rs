@@ -1,3 +1,5 @@
+use crate::aes::IvAndCiphertext;
+use crate::v4::MAGIC;
 use crate::{
     aes::{
         aes_encrypt_with_iv, decrypt_document_with_attached_iv, EncryptionKey, PlaintextDocument,
@@ -14,8 +16,6 @@ const GCM_TAG_LEN: usize = 16;
 
 const V3: u8 = 3u8;
 
-const MAGIC: &[u8; 4] = crate::v4::MAGIC;
-
 // [3, b"IRON]
 const MAGIC_HEADER_LEN: usize = 5;
 // 2 bytes indicate the length of the protobuf header
@@ -28,7 +28,7 @@ const DETACHED_HEADER_LEN: usize = MAGIC_HEADER_LEN + HEADER_LEN_LEN;
 #[derive(Debug, Clone)]
 pub struct EncryptedPayload {
     v3_document_header: V3DocumentHeader,
-    iv_and_ciphertext: Vec<u8>,
+    iv_and_ciphertext: IvAndCiphertext,
 }
 
 impl TryFrom<Vec<u8>> for EncryptedPayload {
@@ -62,7 +62,7 @@ impl TryFrom<Vec<u8>> for EncryptedPayload {
             })?;
         Ok(EncryptedPayload {
             v3_document_header,
-            iv_and_ciphertext: iv_and_cipher.to_vec(),
+            iv_and_ciphertext: iv_and_cipher.to_vec().into(),
         })
     }
 }
@@ -71,7 +71,7 @@ impl EncryptedPayload {
     /// Decrypt a V3 detached document and verify its signature.
     pub fn decrypt(self, key: &EncryptionKey) -> Result<PlaintextDocument, Error> {
         if verify_signature(key.0, &self.v3_document_header) {
-            decrypt_document_with_attached_iv(key, &self.iv_and_ciphertext)
+            decrypt_document_with_attached_iv(key, &self.iv_and_ciphertext.0)
         } else {
             Err(Error::DecryptError(
                 "Signature validation failed.".to_string(),
