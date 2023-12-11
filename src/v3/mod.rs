@@ -14,7 +14,7 @@ use protobuf::Message;
 const IV_LEN: usize = 12;
 const GCM_TAG_LEN: usize = 16;
 
-const V3: u8 = 3u8;
+pub const V3: u8 = 3u8;
 
 // [3, b"IRON]
 const MAGIC_HEADER_LEN: usize = 5;
