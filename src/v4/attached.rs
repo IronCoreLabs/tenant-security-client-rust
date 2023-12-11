@@ -14,7 +14,7 @@ fn get_v4_header_and_payload(mut b: Bytes) -> Result<(Bytes, IvAndCiphertext)> {
             //Check to see if the next 4 bytes are the IRON ascii chars
             let maybe_magic = b.split_to(MAGIC.len());
             Some(maybe_magic)
-                .filter(|bytes| *bytes == MAGIC[..])
+                .filter(|bytes| bytes.as_ref() == MAGIC)
                 .ok_or(Error::NoIronCoreMagic)?;
             //The following 2 bytes should be a u16 (big endian). This is the size of the PB header
             let header_size = b.get_u16().into();
