@@ -109,6 +109,7 @@ impl EdekType {
 }
 
 /// The key id header parsed into its pieces.
+#[derive(Debug, PartialEq)]
 pub struct KeyIdHeader {
     pub key_id: KeyId,
     pub edek_type: EdekType,

@@ -1,5 +1,6 @@
 // Reexport the v4 aes, because we also use it for v5.
 pub use crate::v4::aes;
+pub mod attached;
 pub mod key_id_header;
 use crate::{
     aes::{aes_encrypt, EncryptionKey, IvAndCiphertext, PlaintextDocument},
@@ -17,6 +18,8 @@ use rand::{CryptoRng, RngCore};
 type Result<T> = core::result::Result<T, Error>;
 const MAGIC: &[u8; 4] = crate::v4::MAGIC;
 pub(crate) const V0: u8 = 0u8;
+/// For external users to check the first bytes of an edoc.
+pub const VERSION_AND_MAGIC: [u8; 5] = [V0, MAGIC[0], MAGIC[1], MAGIC[2], MAGIC[3]];
 /// This is 0 + IRON
 pub(crate) const DETACHED_HEADER_LEN: usize = 5;
 
