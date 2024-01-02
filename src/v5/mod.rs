@@ -98,7 +98,7 @@ pub fn encrypt_detached_document<R: RngCore + CryptoRng>(
 ) -> Result<EncryptedPayload> {
     let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
     Ok(EncryptedPayload(IvAndCiphertext(
-        iv.into_iter().chain(enc_data.0.into_iter()).collect(),
+        iv.into_iter().chain(enc_data.0).collect(),
     )))
 }
 
