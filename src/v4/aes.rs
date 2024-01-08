@@ -20,7 +20,7 @@ type Result<T> = core::result::Result<T, crate::Error>;
 /// If `maybe_dek` is None, generate a dek, otherwise use the one provided.
 /// Encrypt the dek using the kek to make an aes edek. The provided id will be put into the Aes256GcmEncryptedDek.
 /// Returns the dek and Aes256GcmEncryptedDek.
-pub fn generate_aes_edek<R: CryptoRng + RngCore>(
+fn generate_aes_edek<R: CryptoRng + RngCore>(
     rng: &mut R,
     kek: EncryptionKey,
     maybe_dek: Option<EncryptionKey>,
@@ -45,10 +45,7 @@ pub fn generate_aes_edek<R: CryptoRng + RngCore>(
 }
 
 /// Sign the payload using the key.
-pub fn sign_header(
-    key: aes::EncryptionKey,
-    header_payload: &SignedPayload,
-) -> SignatureInformation {
+fn sign_header(key: aes::EncryptionKey, header_payload: &SignedPayload) -> SignatureInformation {
     //This unwrap can't actually ever happen because they create the coded stream with exactly the computed size before
     //serializing.
     let bytes = header_payload
