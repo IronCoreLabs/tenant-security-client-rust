@@ -131,7 +131,7 @@ pub(crate) fn aes_decrypt_core(
         )
         .map_err(|_| {
             Error::DecryptError(
-                "Decryption failed. Check the data and tenant ID are correct".to_string(),
+                "Decryption failed. Ensure the data and key are correct.".to_string(),
             )
         })
 }
