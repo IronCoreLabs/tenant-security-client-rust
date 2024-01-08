@@ -109,7 +109,7 @@ pub(crate) fn aes_encrypt_with_iv(
                 aad: associated_data,
             },
         )
-        .map_err(|e| Error::EncryptError(e.to_string()))?;
+        .map_err(|_| Error::EncryptError("Encryption failed.".to_string()))?;
     Ok((iv, EncryptedDocument(encrypted_bytes)))
 }
 
@@ -129,7 +129,11 @@ pub(crate) fn aes_decrypt_core(
                 aad: associated_data,
             },
         )
-        .map_err(|e| Error::DecryptError(e.to_string()))
+        .map_err(|_| {
+            Error::DecryptError(
+                "Decryption failed. Check the data and tenant ID are correct".to_string(),
+            )
+        })
 }
 
 #[cfg(test)]
