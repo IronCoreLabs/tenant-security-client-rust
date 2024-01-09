@@ -24,7 +24,7 @@ const DETERMINISTIC_PAYLOAD_TYPE_NUM: u8 = 0u8;
 const VECTOR_METADATA_PAYLOAD_TYPE_NUM: u8 = 1u8;
 const STANDARD_EDEK_PAYLOAD_TYPE_NUM: u8 = 2u8;
 
-const KEY_ID_HEADER_LEN: usize = 6;
+pub(crate) const KEY_ID_HEADER_LEN: usize = 6;
 
 type Result<A> = std::result::Result<A, super::Error>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
