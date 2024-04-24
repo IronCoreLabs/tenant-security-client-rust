@@ -1,8 +1,13 @@
 // This module is dedicated with things to do with aes encryption/decryption.
 use super::Error;
+use crate::take_lock;
 use aes_gcm::{aead::Aead, aead::Payload, AeadCore, Aes256Gcm, KeyInit, Nonce};
 use bytes::Bytes;
 use rand::{CryptoRng, RngCore};
+use std::{
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+};
 
 type Result<T> = core::result::Result<T, super::Error>;
 pub(crate) const IV_LEN: usize = 12;
@@ -76,21 +81,26 @@ pub fn decrypt_document_with_attached_iv(
 
 /// Encrypt a document and put the iv on the front of it.
 pub fn encrypt_document_and_attach_iv<R: RngCore + CryptoRng>(
-    rng: &mut R,
+    rng: Arc<Mutex<R>>,
     key: EncryptionKey,
     document: PlaintextDocument,
 ) -> Result<IvAndCiphertext> {
-    let (iv, enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
-    Ok(IvAndCiphertext([&iv[..], &enc_data.0[..]].concat().into()))
+    let (iv, mut enc_data) = aes_encrypt(key, &document.0, &[], rng)?;
+    let mut iv_vec = iv.to_vec();
+    iv_vec.append(&mut enc_data.0);
+    Ok(IvAndCiphertext(iv_vec.into()))
 }
 
 pub(crate) fn aes_encrypt<R: RngCore + CryptoRng>(
     key: EncryptionKey,
     plaintext: &[u8],
     associated_data: &[u8],
-    rng: &mut R,
+    rng: Arc<Mutex<R>>,
 ) -> Result<([u8; 12], EncryptedDocument)> {
-    let iv = Aes256Gcm::generate_nonce(rng);
+    let iv = {
+        let mut guard = take_lock(&rng);
+        Aes256Gcm::generate_nonce(&mut *guard.deref_mut())
+    };
     aes_encrypt_with_iv(key, plaintext, iv.into(), associated_data)
 }
 
@@ -149,22 +159,30 @@ mod test {
             "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
         ));
         let plaintext = hex!("112233445566778899aabbccddee");
-        let (iv, encrypt_result) =
-            aes_encrypt(key, &plaintext, &[], &mut rand::thread_rng()).unwrap();
+        let (iv, encrypt_result) = aes_encrypt(
+            key,
+            &plaintext,
+            &[],
+            Arc::new(Mutex::new(rand::thread_rng())),
+        )
+        .unwrap();
         let decrypt_result = aes_decrypt_core(&key, iv, &encrypt_result.0, &[]).unwrap();
         assert_eq!(decrypt_result, plaintext);
     }
 
     #[test]
     fn encrypt_decrypt_attached_roundtrip() {
-        let mut rng = ChaCha20Rng::seed_from_u64(13u64);
+        let rng = ChaCha20Rng::seed_from_u64(13u64);
         let key = EncryptionKey(hex!(
             "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
         ));
         let document = vec![1u8];
-        let encrypted =
-            encrypt_document_and_attach_iv(&mut rng, key, PlaintextDocument(document.clone()))
-                .unwrap();
+        let encrypted = encrypt_document_and_attach_iv(
+            Arc::new(Mutex::new(rng)),
+            key,
+            PlaintextDocument(document.clone()),
+        )
+        .unwrap();
         let result = decrypt_document_with_attached_iv(&key, &encrypted).unwrap();
         assert_eq!(result.0, document);
     }
