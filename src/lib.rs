@@ -4,7 +4,10 @@ pub mod v3;
 pub mod v4;
 pub mod v5;
 
-use std::fmt::{Display, Formatter, Result as DisplayResult};
+use std::{
+    fmt::{Display, Formatter, Result as DisplayResult},
+    sync::{Mutex, MutexGuard},
+};
 use thiserror::Error;
 use v5::key_id_header::KEY_ID_HEADER_LEN;
 
@@ -64,4 +67,29 @@ impl Display for Error {
             Error::KeyIdHeaderMalformed(x) => write!(f, "Malformed key ID header: '{x}'"),
         }
     }
+}
+
+/// Acquire mutex in a blocking fashion. If the Mutex is or becomes poisoned, write out an error
+/// message and panic.
+///
+/// The lock is released when the returned MutexGuard falls out of scope.
+///
+/// # Usage:
+/// single statement (mut)
+/// `let result = take_lock(&t).deref_mut().call_method_on_t();`
+///
+/// multi-statement (mut)
+/// ```ignore
+/// let t = T {};
+/// let result = {
+///     let g = &mut *take_lock(&t);
+///     g.call_method_on_t()
+/// }; // lock released here
+/// ```
+///
+pub fn take_lock<T>(m: &Mutex<T>) -> MutexGuard<T> {
+    m.lock().unwrap_or_else(|e| {
+        let error = format!("Error when acquiring lock: {e}");
+        panic!("{error}");
+    })
 }
