@@ -1,7 +1,7 @@
 // This module is dedicated with things to do with aes encryption/decryption.
 use super::Error;
 use crate::take_lock;
-use aes_gcm::{aead::Aead, aead::Payload, AeadCore, Aes256Gcm, KeyInit, Nonce};
+use aes_gcm::{AeadCore, Aes256Gcm, KeyInit, Nonce, aead::Aead, aead::Payload};
 use bytes::Bytes;
 use rand::{CryptoRng, RngCore};
 use std::{
