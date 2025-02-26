@@ -1,7 +1,7 @@
 use bytes::{Buf, Bytes};
 use protobuf::Message;
 
-use crate::{aes::IvAndCiphertext, icl_header_v4::V4DocumentHeader, Error};
+use crate::{Error, aes::IvAndCiphertext, icl_header_v4::V4DocumentHeader};
 
 use super::key_id_header::{self, KeyIdHeader};
 
@@ -82,16 +82,16 @@ impl AttachedDocument {
 #[cfg(test)]
 mod test {
     use crate::{
+        Error,
         aes::IvAndCiphertext,
         icl_header_v4::{
-            v4document_header::{
-                edek_wrapper::{Aes256GcmEncryptedDek, Edek},
-                EdekWrapper, SignedPayload,
-            },
             V4DocumentHeader,
+            v4document_header::{
+                EdekWrapper, SignedPayload,
+                edek_wrapper::{Aes256GcmEncryptedDek, Edek},
+            },
         },
         v5::key_id_header::{EdekType, KeyId, KeyIdHeader, PayloadType},
-        Error,
     };
 
     use super::*;

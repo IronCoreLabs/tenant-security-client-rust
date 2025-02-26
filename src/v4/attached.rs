@@ -1,4 +1,4 @@
-use crate::{aes::IvAndCiphertext, icl_header_v4::V4DocumentHeader, Error};
+use crate::{Error, aes::IvAndCiphertext, icl_header_v4::V4DocumentHeader};
 use bytes::{Buf, Bytes};
 use protobuf::Message;
 
@@ -67,8 +67,8 @@ pub fn decode_attached_edoc(b: Bytes) -> Result<(V4DocumentHeader, IvAndCipherte
 #[cfg(test)]
 mod test {
     use crate::icl_header_v4::v4document_header::{
-        edek_wrapper::{Aes256GcmEncryptedDek, Edek},
         EdekWrapper, SignedPayload,
+        edek_wrapper::{Aes256GcmEncryptedDek, Edek},
     };
 
     use super::*;

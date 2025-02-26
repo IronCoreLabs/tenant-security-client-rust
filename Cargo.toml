@@ -2,14 +2,14 @@
 name = "ironcore-documents"
 description = "A library for working with IronCore Labs documents and header formats."
 version = "0.2.2-pre"
-edition = "2021"
+edition = "2024"
 license = "AGPL-3.0-only"
 documentation = "https://docs.rs/ironcore-documents"
 readme = "README.md"
 repository = "https://github.com/IronCoreLabs/ironcore-documents"
 categories = ["algorithms", "cryptography"]
 keywords = ["cryptography"]
-rust-version = "1.70.0"
+rust-version = "1.85.0"
 
 [dependencies]
 aes-gcm = "0.10.3"
