@@ -3,9 +3,9 @@ pub use crate::v4::aes;
 pub mod attached;
 pub mod key_id_header;
 use crate::{
-    aes::{aes_encrypt, EncryptionKey, IvAndCiphertext, PlaintextDocument},
-    icl_header_v4::V4DocumentHeader,
     Error,
+    aes::{EncryptionKey, IvAndCiphertext, PlaintextDocument, aes_encrypt},
+    icl_header_v4::V4DocumentHeader,
 };
 use bytes::{Buf, Bytes};
 use key_id_header::KeyIdHeader;

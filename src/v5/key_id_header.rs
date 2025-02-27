@@ -2,7 +2,7 @@ use bytes::Bytes;
 use itertools::Itertools;
 use protobuf::Message;
 
-use crate::{vector_encryption_metadata::VectorEncryptionMetadata, Error};
+use crate::{Error, vector_encryption_metadata::VectorEncryptionMetadata};
 use std::fmt::Display;
 
 // This file is for functions which are working with our key id header value.

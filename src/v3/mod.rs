@@ -1,12 +1,12 @@
 use crate::aes::IvAndCiphertext;
 use crate::v4::MAGIC;
 use crate::{
+    Error,
     aes::{
-        aes_encrypt_with_iv, decrypt_document_with_attached_iv, EncryptionKey, PlaintextDocument,
+        EncryptionKey, PlaintextDocument, aes_encrypt_with_iv, decrypt_document_with_attached_iv,
     },
     icl_header_v3::V3DocumentHeader,
     signing::AES_KEY_LEN,
-    Error,
 };
 use bytes::Bytes;
 use protobuf::Message;
